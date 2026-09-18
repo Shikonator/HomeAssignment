@@ -24,8 +24,13 @@ bool MergeSide(bool descending, std::span<const VenueSideInput> inputs,
 
   Wide cumulative_notional = 0;
   bool truncated = false;
-  // Set from the first level found; the touch is not known until then.
+  // Computed from the first level found, since the touch is not known until
+  // then. An explicit flag rather than `bound == 0` as a sentinel: a very low
+  // price with a very wide offset could legitimately produce a bound of zero,
+  // and while --max-publish-bps is range-checked so that cannot happen here, a
+  // sentinel that can collide with a real value is the wrong shape regardless.
   Px bound = 0;
+  bool bound_computed = false;
 
   while (true) {
     // Pick the best price among the cursor heads.
@@ -48,8 +53,9 @@ bool MergeSide(bool descending, std::span<const VenueSideInput> inputs,
     }
 
     if (limits.max_bps_from_touch_e8 > 0) {
-      if (bound == 0) {
+      if (!bound_computed) {
         bound = OffsetByBpsOutward(best, limits.max_bps_from_touch_e8, descending);
+        bound_computed = true;
       }
       const bool inside = descending ? (best >= bound) : (best <= bound);
       if (!inside) {

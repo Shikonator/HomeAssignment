@@ -143,6 +143,20 @@ BID  50.000M+  vwap 80993.61  worst 77310.02  qty 319.39  filled 25.869M  levels
 * Wide bps bands report `depth_limited=true` when their bound lies outside the
   published ladder.
 
+**The conclusion does not depend on where the bound is set**, which is the
+obvious objection to a claim like this. Comparing the two measurements:
+
+| window | consolidated bid liquidity |
+|---|---|
+| ~106 bps (a REST snapshot) | $23.8M |
+| 500 bps (the published ladder) | $25.9M |
+
+Widening the window nearly fivefold finds about **9% more liquidity** — the
+region just outside the touch is demonstrably thin. Filling 50M would need
+roughly another $24M from somewhere. Tighten the bound to 200 bps or loosen it
+to 1000 and 50M still does not fill; the bound is not doing the work of making
+the claim true.
+
 `depth_limited` discriminates rather than being permanently on: in one live
 sample the ask side's 1000 bps band was flagged while the bid side genuinely
 extended past its bound.
