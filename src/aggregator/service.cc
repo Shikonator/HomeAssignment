@@ -94,18 +94,24 @@ grpc::Status NormaliseBands(const char* field, std::vector<std::int64_t> request
   if (static_cast<int>(requested.size()) > kMaxBandsPerRequest) {
     return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                         std::string(field) + ": at most " +
-                            std::to_string(kMaxBandsPerRequest) + " bands per request");
+                            std::to_string(kMaxBandsPerRequest) + " bands per request, got " +
+                            std::to_string(requested.size()));
   }
+  // Errors name the offending value, not just the rule. With up to 32 bands in
+  // a request, "one of your values is not positive" is meaningfully worse than
+  // naming it.
   for (const std::int64_t value : requested) {
     if (value <= 0) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          std::string(field) + ": values must be positive");
+                          std::string(field) + ": values must be positive, got " +
+                              std::to_string(value));
     }
   }
   std::sort(requested.begin(), requested.end());
-  if (std::adjacent_find(requested.begin(), requested.end()) != requested.end()) {
+  const auto duplicate = std::adjacent_find(requested.begin(), requested.end());
+  if (duplicate != requested.end()) {
     return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                        std::string(field) + ": duplicate values");
+                        std::string(field) + ": duplicate value " + std::to_string(*duplicate));
   }
   *out = std::move(requested);
   return grpc::Status::OK;
@@ -197,8 +203,20 @@ grpc::Status MarketDataService::ResolveSubscription(const v1::Subscription& subs
     }
     // A typo must never be silently ignored: the client would receive a
     // plausible book built from venues it did not ask for.
+    //
+    // The message lists what IS configured, because this rejection is the only
+    // place that information reaches a client -- there is no RPC that enumerates
+    // venues before you subscribe, so an error that says only "wrong" leaves the
+    // caller guessing.
     if (!found) {
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown venue: " + requested);
+      std::string configured;
+      for (const VenueFeed& venue : engine_->venues()) {
+        if (!configured.empty()) configured += ", ";
+        configured += venue.name;
+      }
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                          "unknown venue '" + requested + "'; configured venues are " +
+                              configured);
     }
   }
   return grpc::Status::OK;

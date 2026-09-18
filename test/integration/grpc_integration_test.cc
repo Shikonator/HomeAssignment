@@ -248,6 +248,11 @@ TEST_F(GrpcIntegrationTest, UnknownVenueIsRejectedRatherThanIgnored) {
   const grpc::Status status = reader->Finish();
   EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
   EXPECT_NE(status.error_message().find("kraken"), std::string::npos);
+  // The rejection is the only place a client can learn which venues exist --
+  // there is no RPC that enumerates them before you subscribe -- so it must
+  // name them rather than saying only "wrong".
+  EXPECT_NE(status.error_message().find("binance"), std::string::npos);
+  EXPECT_NE(status.error_message().find("okx"), std::string::npos);
 }
 
 // The proto promises these validations; a contract a grader can read and the
@@ -269,6 +274,15 @@ TEST_F(GrpcIntegrationTest, MalformedBandRequestsAreRejected) {
   v1::StreamVolumeBandsRequest negative;
   negative.add_notional_bands_e8(-1);
   expect_rejected(negative, "negative target");
+  {
+    // The message names the offending value, not just the rule: with up to 32
+    // bands per request, "one of your values is not positive" is much worse.
+    grpc::ClientContext context;
+    auto reader = stub_->StreamVolumeBands(&context, negative);
+    v1::VolumeBandsUpdate update;
+    reader->Read(&update);
+    EXPECT_NE(reader->Finish().error_message().find("-1"), std::string::npos);
+  }
 
   v1::StreamVolumeBandsRequest duplicate;
   duplicate.add_notional_bands_e8(P(100));
