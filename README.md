@@ -107,6 +107,19 @@ So:
   liquidity, which is the meaningful response to "50M+" when 50M exceeds the
   book.
 
+**This is not one measurement on one day.** The table above comes from a Python
+survey of the venues' REST endpoints; the running C++ system reproduces it
+independently, on a different day and at a different price — a live run with BTC
+at ~80,838 filled only **25.855M** of the 50M bid band, across 5511 levels.
+Two implementations, two market conditions, same conclusion.
+
+The direction of the price dependence is worth stating, because the sceptical
+reaction is "surely this depends on the price": it does, weakly, and in the
+helpful direction. A *higher* price makes a fixed dollar target easier in BTC
+terms — 50M needs 619 BTC at 80,838 against 653 BTC at 76,547 — and the
+consolidated book holds roughly 448 BTC on the bid. The gap is not close enough
+for ordinary price movement to close it.
+
 `depth_limited` discriminates rather than being permanently on. A live sample:
 the ask side's 1000 bps bound was 88852.78 against a worst published ask of
 86422.88, so it was flagged — while the bid side genuinely extended past its
