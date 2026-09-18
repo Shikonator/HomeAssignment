@@ -34,6 +34,18 @@ because the full-depth order book feeds are public on all three venues and need
 no API keys, so the only thing required to run this is outbound network access —
 which also means a reviewer can run it without provisioning anything.
 
+**Give the Docker VM at least 8 GB of RAM.** Below that the build is
+OOM-killed somewhere inside gRPC and reports `cc1plus: signal 9`, which does not
+mention memory. See [Build requirements](#build-requirements-and-build-times).
+
+**The build prints nothing until it finishes. That is not a hang.** BuildKit
+buffers output, so a first build shows a silent terminal for the better part of
+half an hour while gRPC, Boost and protobuf compile from source. To watch it:
+
+```bash
+docker compose -f docker/docker-compose.yml build --progress=plain
+```
+
 `docker compose` is a CLI **plugin**. On a machine that has only the bare Docker
 CLI it is not present, and the error is misleading — `unknown shorthand flag:
 'f' in -f`, which reads as "your compose file is malformed" rather than "this
@@ -165,6 +177,48 @@ runner owns all I/O and knows nothing about any exchange's wire format.
 
 ---
 
+## System scalability
+
+Where each axis binds, and which binds first.
+
+**Message rate — roughly 200× headroom.** Measured over a 61-second run: 1559
+consolidated publishes (~25/s), p50 aggregation latency **192 µs**, p99 1181 µs,
+max 4718 µs. Latency here means venue receive to consolidated publish, measured
+inside the aggregator.
+
+At ~25 publishes/s the aggregator has ~39 ms per cycle and uses ~192 µs of it —
+about **200× headroom**, against the consolidated rate rather than the more
+flattering per-venue 100 ms cadence, which would read as ~440×. Parsing, the
+expensive part, is already parallel across venue threads, so the headroom grows
+with cores rather than being consumed by more venues.
+
+**Venues — linear, with a known crossover.** `kMaxVenues` is 4 (one spare);
+raising it is a one-constant change and the aggregator hard-fails at startup
+rather than silently dropping a venue. The merge is a linear scan over cursor
+heads rather than a heap, deliberately: with a handful of venues the scan wins
+on branch prediction and cache locality. That stops being true somewhere around
+8–16 venues, at which point the heap becomes the right structure. The design is
+optimal for its actual range, not for all ranges.
+
+**Subscribers — the fan-out is cheap; the threading model is the limit.**
+Publishing is O(subscribers) pointer swaps under one mutex, so thousands of
+subscribers would be unremarkable at this rate. The binding constraint is the
+**synchronous gRPC API: one thread per active stream**, which puts the practical
+ceiling in the hundreds. The migration path is the callback API, at a real cost
+in readability — see [Known limitations](#known-limitations-and-possible-extensions).
+
+**Instruments — horizontal.** One instrument per process today. The proto
+carries `instrument` throughout, so scaling is one process per instrument, which
+is the standard shape for this kind of service and keeps a hot instrument from
+sharing a book thread with a quiet one.
+
+**Memory — the thing that would hurt first if depth grew.** `MergedLevel` is 48
+bytes (price, total quantity, and a 4-slot per-venue array). At ~5500 levels per
+side that is ~264 KB a side, so **~528 KB per published snapshot**, allocated
+fresh each time. At the measured ~25 publishes/s that is ~13 MB/s of allocation
+churn — irrelevant today, and the first number that would matter if venues began
+publishing materially deeper books.
+
 ## Design decisions
 
 ### Fixed-point, not floating point
@@ -238,48 +292,6 @@ The same asymmetry decides both queues:
   the runner discards the whole batch and forces a resync, which is always safe.
   It does not block the venue thread either — that would back up the receive
   buffer until the exchange disconnected us, turning a hiccup into an outage.
-
-### System scalability
-
-Where each axis binds, and which binds first.
-
-**Message rate — roughly 200× headroom.** Measured over a 61-second run: 1559
-consolidated publishes (~25/s), p50 aggregation latency **192 µs**, p99 1181 µs,
-max 4718 µs. Latency here means venue receive to consolidated publish, measured
-inside the aggregator.
-
-At ~25 publishes/s the aggregator has ~39 ms per cycle and uses ~192 µs of it —
-about **200× headroom**, against the consolidated rate rather than the more
-flattering per-venue 100 ms cadence, which would read as ~440×. Parsing, the
-expensive part, is already parallel across venue threads, so the headroom grows
-with cores rather than being consumed by more venues.
-
-**Venues — linear, with a known crossover.** `kMaxVenues` is 4 (one spare);
-raising it is a one-constant change and the aggregator hard-fails at startup
-rather than silently dropping a venue. The merge is a linear scan over cursor
-heads rather than a heap, deliberately: with a handful of venues the scan wins
-on branch prediction and cache locality. That stops being true somewhere around
-8–16 venues, at which point the heap becomes the right structure. The design is
-optimal for its actual range, not for all ranges.
-
-**Subscribers — the fan-out is cheap; the threading model is the limit.**
-Publishing is O(subscribers) pointer swaps under one mutex, so thousands of
-subscribers would be unremarkable at this rate. The binding constraint is the
-**synchronous gRPC API: one thread per active stream**, which puts the practical
-ceiling in the hundreds. The migration path is the callback API, at a real cost
-in readability — see [Known limitations](#known-limitations-and-possible-extensions).
-
-**Instruments — horizontal.** One instrument per process today. The proto
-carries `instrument` throughout, so scaling is one process per instrument, which
-is the standard shape for this kind of service and keeps a hot instrument from
-sharing a book thread with a quiet one.
-
-**Memory — the thing that would hurt first if depth grew.** `MergedLevel` is 48
-bytes (price, total quantity, and a 4-slot per-venue array). At ~5500 levels per
-side that is ~264 KB a side, so **~528 KB per published snapshot**, allocated
-fresh each time. At the measured ~25 publishes/s that is ~13 MB/s of allocation
-churn — irrelevant today, and the first number that would matter if venues began
-publishing materially deeper books.
 
 ### Crossed consolidated books
 
