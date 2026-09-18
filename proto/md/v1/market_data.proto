@@ -60,8 +60,10 @@ service MarketData {
 // Common
 // -----------------------------------------------------------------------------
 
-// Options shared by every streaming RPC. Factored out so a new view (e.g. a
-// full-depth ladder) reuses identical subscription semantics.
+// Options shared by every streaming RPC. Factored out so a new view reuses
+// identical subscription semantics -- a full-depth ladder view is the obvious
+// next one, and is deliberately not exposed today; see README, "Why there is no
+// raw ladder RPC".
 message Subscription {
   // Instrument symbol. Empty defaults to the server's configured instrument
   // ("BTCUSDT"). A symbol the server does not aggregate => INVALID_ARGUMENT.

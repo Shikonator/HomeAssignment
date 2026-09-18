@@ -7,9 +7,20 @@ namespace {
 
 void PrintSide(const char* label,
                const google::protobuf::RepeatedPtrField<md::v1::PriceBand>& bands) {
+  // The specification asks for "BBO+ 50bps/100bps/200bps/500bps/1000bps+". As
+  // with volume bands, the trailing "+" is the open-ended band and is labelled
+  // from the largest finite offset so the output reads as the requirement.
+  std::int64_t largest_finite = 0;
   for (const md::v1::PriceBand& band : bands) {
-    const std::string offset =
-        band.open_ended() ? std::string("  all+") : md::Bps(band.offset_bps_e8()) + "bps";
+    if (!band.open_ended() && band.offset_bps_e8() > largest_finite) {
+      largest_finite = band.offset_bps_e8();
+    }
+  }
+
+  for (const md::v1::PriceBand& band : bands) {
+    const std::string offset = band.open_ended()
+                                   ? md::BpsLabel(largest_finite) + "bps+"
+                                   : md::BpsLabel(band.offset_bps_e8()) + "bps ";
     std::printf("      %s %9s  bound %14s  qty %14s  notional %s  vwap %14s  levels %5d%s\n",
                 label, offset.c_str(), md::FmtPx(band.bound_price_e8()).c_str(),
                 md::FmtQty(band.qty_e8()).c_str(), md::Millions(band.notional_e8()).c_str(),

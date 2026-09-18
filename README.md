@@ -29,6 +29,11 @@ docker compose -f docker/docker-compose.yml up --build
 
 That builds four images and starts the aggregator plus all three publishers.
 
+**Spot, not perpetual futures.** The assignment allows either. Spot was chosen
+because the full-depth order book feeds are public on all three venues and need
+no API keys, so the only thing required to run this is outbound network access —
+which also means a reviewer can run it without provisioning anything.
+
 `docker compose` is a CLI **plugin**. On a machine that has only the bare Docker
 CLI it is not present, and the error is misleading — `unknown shorthand flag:
 'f' in -f`, which reads as "your compose file is malformed" rather than "this
@@ -37,7 +42,9 @@ plugins (`brew install docker-compose docker-buildx`, or Docker Desktop, which
 bundles both). Buildx is needed because the Dockerfile uses a BuildKit cache
 mount.
 **The aggregator needs outbound internet** to reach the exchanges. The test
-suites do not.
+suites do not — `test/conformance/recordings/*.jsonl` are captured live
+sessions committed on purpose, and they are what makes the replay suite
+hermetic and runnable offline.
 
 To run without Docker:
 
@@ -54,10 +61,10 @@ All three venues reach `LIVE` in about 1.5 seconds from process start.
 `status_client` shows what the aggregator is actually doing:
 
 ```
-published=216  latency p50=227us p99=3888us max=36963us  uptime=9s
-  binance  BTCUSDT   LIVE  msgs=89   resync=0 gaps=0 overflow=0  bids=5011 asks=5002  80921.69 / 80921.70
-  okx      BTC-USDT  LIVE  msgs=86   resync=0 gaps=0 overflow=0  bids=400  asks=400   80920.70 / 80920.80
-  bybit    BTCUSDT   LIVE  msgs=106  resync=0 gaps=0 overflow=0  bids=200  asks=200   80917.70 / 80917.80
+published=1559  latency p50=192us p99=1181us max=4718us  uptime=61s
+  binance  BTCUSDT   LIVE  msgs=...  resync=0 gaps=0 overflow=0  bids=5011 asks=5002
+  okx      BTC-USDT  LIVE  msgs=...  resync=0 gaps=0 overflow=0  bids=400  asks=400
+  bybit    BTCUSDT   LIVE  msgs=...  resync=0 gaps=0 overflow=0  bids=200  asks=200
 ```
 
 The per-venue level counts are themselves a check that the feeds are what we
@@ -106,6 +113,16 @@ the ask side's 1000 bps bound was 88852.78 against a worst published ask of
 bound and was not.
 
 ---
+
+## How this maps to the assessment criteria
+
+| Criterion | Where it is answered |
+|---|---|
+| **Correctness of implementation** | [Testing](#testing) — eleven offline targets, a differential reference implementation, real captured sessions replayed per venue, and constructed failure scenarios. Plus [Per-venue sequencing](#per-venue-sequencing) for the rules being implemented. |
+| **Quality of architectural design** | [Navigating the code](#navigating-the-code) — `VenueProtocol` has no sockets, threads or clock, so every hard part is pure logic. [Threading](#threading-and-what-lock-free-actually-buys-here) — one writer per book by construction. |
+| **API/protocol design and extensibility** | `proto/md/v1/market_data.proto`, and [Thresholds live in the request](#thresholds-live-in-the-request) — band sets are a property of the request, not the build. Scale travels on the wire; unknown venues are rejected, not ignored. |
+| **System scalability** | [System scalability](#system-scalability) — where each axis binds, and which one binds first. |
+| **Code quality and test coverage** | [Testing](#testing), including an explicit statement of what is *not* covered. No C++ file exceeds 390 lines. Comments explain why, not what — and `market_data.proto` is 414 lines of which roughly half are comments, because every semantic decision is documented where the API is defined. |
 
 ## Navigating the code
 
@@ -180,7 +197,8 @@ the book would silently desync. Truncation happens only at publish time.
   overwrites whatever a subscriber has not collected.
 
 The fan-out uses a mutex, and that is deliberate. These feeds produce roughly
-30–60 publishes per second; an uncontended mutex costs tens of nanoseconds, and
+25 publishes per second (measured); an uncontended mutex costs tens of
+nanoseconds, and
 `std::atomic<std::shared_ptr<T>>` is *not* lock-free on libstdc++ — it uses a
 spinlock pool, i.e. a lock with worse semantics. There is no lock-free win
 available at this rate. What matters is that **the book writer is never
@@ -196,11 +214,59 @@ The same asymmetry decides both queues:
   freely. `meta.sequence` may skip; a gap means conflation, not data loss — and
   the two can never be confused, because every message downstream carries
   complete state, so there is nothing a gap could have lost.
+
+  This is what makes the updates **timely** rather than merely frequent. A queue
+  would hand a lagging subscriber the oldest state it had not yet seen; the
+  conflating slot always hands it the newest. Under load conflation is strictly
+  *more* timely than buffering, not less — the subscriber sees fewer states, and
+  every one it sees is current.
 * **Venue → aggregator** carries *deltas*. Dropping one corrupts the book
   permanently and undetectably. The ring therefore never drops: on a full ring
   the runner discards the whole batch and forces a resync, which is always safe.
   It does not block the venue thread either — that would back up the receive
   buffer until the exchange disconnected us, turning a hiccup into an outage.
+
+### System scalability
+
+Where each axis binds, and which binds first.
+
+**Message rate — roughly 200× headroom.** Measured over a 61-second run: 1559
+consolidated publishes (~25/s), p50 aggregation latency **192 µs**, p99 1181 µs,
+max 4718 µs. Latency here means venue receive to consolidated publish, measured
+inside the aggregator.
+
+At ~25 publishes/s the aggregator has ~39 ms per cycle and uses ~192 µs of it —
+about **200× headroom**, against the consolidated rate rather than the more
+flattering per-venue 100 ms cadence, which would read as ~440×. Parsing, the
+expensive part, is already parallel across venue threads, so the headroom grows
+with cores rather than being consumed by more venues.
+
+**Venues — linear, with a known crossover.** `kMaxVenues` is 4 (one spare);
+raising it is a one-constant change and the aggregator hard-fails at startup
+rather than silently dropping a venue. The merge is a linear scan over cursor
+heads rather than a heap, deliberately: with a handful of venues the scan wins
+on branch prediction and cache locality. That stops being true somewhere around
+8–16 venues, at which point the heap becomes the right structure. The design is
+optimal for its actual range, not for all ranges.
+
+**Subscribers — the fan-out is cheap; the threading model is the limit.**
+Publishing is O(subscribers) pointer swaps under one mutex, so thousands of
+subscribers would be unremarkable at this rate. The binding constraint is the
+**synchronous gRPC API: one thread per active stream**, which puts the practical
+ceiling in the hundreds. The migration path is the callback API, at a real cost
+in readability — see [Known limitations](#known-limitations-and-possible-extensions).
+
+**Instruments — horizontal.** One instrument per process today. The proto
+carries `instrument` throughout, so scaling is one process per instrument, which
+is the standard shape for this kind of service and keeps a hot instrument from
+sharing a book thread with a quiet one.
+
+**Memory — the thing that would hurt first if depth grew.** `MergedLevel` is 48
+bytes (price, total quantity, and a 4-slot per-venue array). At ~5500 levels per
+side that is ~264 KB a side, so **~528 KB per published snapshot**, allocated
+fresh each time. At the measured ~25 publishes/s that is ~13 MB/s of allocation
+churn — irrelevant today, and the first number that would matter if venues began
+publishing materially deeper books.
 
 ### Crossed consolidated books
 
@@ -251,6 +317,27 @@ goes, with no allocation.
   level resting exactly on the boundary behaves identically either way.
 * The specification's `50M+` and `1000bps+` are real bands: a trailing
   open-ended band sweeping everything to the end of the ladder.
+
+### Why there is no raw ladder RPC
+
+The consolidated book is served through three purpose-built views rather than as
+a raw depth ladder. That is deliberate, and it is the sort of decision the
+`Subscription` message was factored to make cheap to revisit.
+
+The three specified clients need the touch, sweep prices and banded liquidity —
+all of which are *derived from* the consolidated book and are what "updates about
+changes in the consolidated book" means in practice. A raw ladder would be the
+obvious fourth view, and adding it is additive: `ConsolidatedBook` is already the
+shared published object, `MergedLevel` already carries per-venue attribution, and
+`LadderView` and the venue filter already exist, so it is a message, an RPC and a
+fill function.
+
+The reason it is not there is bandwidth, and it is the same reasoning that caps
+band counts. The full ladder is ~5500 levels a side; with per-venue attribution
+that is roughly 440 KB per message — ~11 MB/s per subscriber at the measured
+rate, and ~26 MB/s at a 60 Hz burst. Any such RPC therefore has to take a
+bounded `max_levels` with a small default, and shipping one without that bound
+would be a worse answer than not shipping it.
 
 ### Thresholds live in the request
 
@@ -415,11 +502,18 @@ because that is where the bugs were.
 | `//test/unit:concurrency_test` | SPSC ring ordering and fullness, conflation, bounded waits, shutdown, non-blocking publish |
 | `//test/unit:retry_test` | Backoff growth/saturation/reset, resync rate budget window |
 | `//test/unit:ws_url_test` | URL parsing including IPv6 literals |
-| `//test/unit:venue_protocol_test` | 25 cases: sequencing, resync, fatal verdicts, instrument filtering |
+| `//test/unit:venue_protocol_test` | Sequencing, resync, fatal verdicts, instrument filtering, across all three venues |
 | `//test/integration:grpc_integration_test` | Real engine + server + client stub: BBO, both band families, venue filter, request validation, staleness, crossed book |
 | `//test/conformance:analytics_conformance_test` | Differential against an independent Python implementation |
 | `//test/conformance:parser_conformance_test` | 465 parser cases, differential |
 | `//test/conformance:replay_conformance_test` | Real captured sessions replayed per venue, plus 16 constructed failure scenarios |
+
+`tools/check_compose.py` cross-checks `docker-compose.yml` against the
+Dockerfile — that every `build.target` names a real stage, that each stage's
+entrypoint binary is actually copied into it, and that each client's `--server`
+host and port match a real service. Those are the mistakes that build perfectly
+cleanly and then fail at `docker run`, twenty minutes later. It does not
+validate the Compose schema; `docker compose config` does that.
 
 ### What the conformance suite does and does not establish
 
@@ -470,6 +564,10 @@ BuildKit cache mount and take seconds. All four service images share one
 
 Local `bazel build //...` has the same one-time cost and is then incremental.
 
+`MODULE.bazel.lock` is committed. It pins the resolved dependency graph, which
+is what makes "builds with Bazel 9.2" a reproducible claim rather than a hope
+about whatever the registry serves today.
+
 ---
 
 ## Configuration
@@ -510,10 +608,27 @@ Clients:
 | Client: Volume bands 1M/5M/10M/25M/50M+ | `src/clients/volume_bands_main.cc` | `analytics_test`, conformance, live run |
 | Client: Price bands BBO+50/100/200/500/1000bps+ | `src/clients/price_bands_main.cc` | `analytics_test`, conformance, live run |
 | Publish to stdout | all three clients | live run |
-| Full implementation in C++ | C++20 throughout | — |
+| Full implementation in C++ | C++20 throughout | grep below |
 | Docker container per service | `docker/Dockerfile`, five stages | see note below |
 | Compose file, single host | `docker/docker-compose.yml` | see note below |
 | README: build, run, decisions | this file | — |
+
+On "full implementation must be in C++": the built system is C++ only. Python
+appears solely as offline test tooling — the independent reference
+implementation and the fixture generators — and never in any binary or image.
+It is not merely absent from the outputs, it is absent from the build graph:
+
+```bash
+grep -rn 'py_binary\|py_test\|py_library\|rules_python' \
+     --include=BUILD.bazel --include=MODULE.bazel .    # returns nothing
+```
+
+On "Docker container files for every service": every service gets **its own
+image and its own build target**, produced from a single multi-stage Dockerfile.
+That is one file rather than four by design — all four service images share one
+`builder` stage, so gRPC, Boost and protobuf compile once per `docker compose
+build` instead of four times. Four near-identical Dockerfiles would quadruple
+the slowest part of the build for no benefit.
 
 Every entry in the "Verified by" column names something that was actually
 executed, with one exception recorded here rather than glossed: the Docker
@@ -537,8 +652,9 @@ images __DOCKER_STATUS__
   configured to reap half-dead peers, and the stream loop waits with a timeout so
   a cancelled subscriber's thread is always reclaimed. The callback API would
   remove the bound at a significant cost in readability.
-* **Snapshots are allocated per publish** rather than pooled. At 30–60 Hz this
-  is a few hundred kilobytes per second and measurably irrelevant; pooling was
-  skipped deliberately in favour of simpler code.
+* **Snapshots are allocated per publish** rather than pooled — ~13 MB/s of
+  short-lived allocation, derived in [System scalability](#system-scalability).
+  Measurably irrelevant on any machine this runs on, so pooling was skipped
+  deliberately in favour of simpler code.
 * **One instrument per process.** The proto carries `instrument` throughout so
   multi-instrument is an additive change, not a redesign.

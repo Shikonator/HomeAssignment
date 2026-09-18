@@ -90,6 +90,10 @@ inline std::string Bps(std::int64_t bps_e8) {
   return buffer;
 }
 
+// Whole basis points render without decimals, so the output transcribes the
+// specification's "50bps/100bps/..." rather than "50.00bps".
+inline std::string BpsLabel(std::int64_t bps_e8) { return FormatFixed(bps_e8, 0); }
+
 // One header line per update, shared by all three publishers so their output
 // can be correlated by sequence number in a combined compose log.
 inline std::string Header(const v1::SnapshotMeta& meta, const v1::Touch& touch) {

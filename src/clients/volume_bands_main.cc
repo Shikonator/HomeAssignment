@@ -7,9 +7,22 @@ namespace {
 
 void PrintSide(const char* label,
                const google::protobuf::RepeatedPtrField<md::v1::VolumeBand>& bands) {
+  // The specification asks for "1M/5M/10M/25M/50M+". The trailing "+" IS the
+  // open-ended band, so it is labelled with the largest finite threshold rather
+  // than something generic -- otherwise the output cannot be matched against
+  // the requirement by eye. The band itself carries notional_target_e8 = 0,
+  // which stays the unambiguous wire key; this is purely how it is drawn.
+  std::int64_t largest_finite = 0;
   for (const md::v1::VolumeBand& band : bands) {
-    const std::string target =
-        band.open_ended() ? std::string("    all+") : md::Millions(band.notional_target_e8());
+    if (!band.open_ended() && band.notional_target_e8() > largest_finite) {
+      largest_finite = band.notional_target_e8();
+    }
+  }
+
+  for (const md::v1::VolumeBand& band : bands) {
+    const std::string target = band.open_ended()
+                                   ? md::Millions(largest_finite) + "+"
+                                   : md::Millions(band.notional_target_e8()) + " ";
     std::printf("      %s %s  vwap %14s  worst %14s  qty %14s  filled %s  levels %d\n", label,
                 target.c_str(), md::FmtPx(band.vwap_price_e8()).c_str(),
                 md::FmtPx(band.worst_price_e8()).c_str(), md::FmtQty(band.filled_qty_e8()).c_str(),
