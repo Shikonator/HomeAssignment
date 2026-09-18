@@ -171,10 +171,23 @@ command:
 python3 test/conformance/reference/measure_depth.py
 ```
 
-Two captures a day apart agreed: the consolidated snapshot spans ~100 bps and
-holds tens of millions, not hundreds. That is a different quantity from the
-running book above, and the README is careful to say which is which — the
-running book is deeper, and the 500 bps bound is what makes the two comparable.
+It measures a different quantity from the running book above — the running book
+is deeper, and the 500 bps bound is what makes the two comparable.
+
+**The depth is genuinely volatile, and the conclusion survives it.** That is the
+other obvious objection: one measurement on one day proves little about a market
+this variable. Two captures 24 hours apart:
+
+| captured | side | within | liquidity | short of 50M by |
+|---|---|---|---|---|
+| 2026-09-17 20:50Z | bids | 101.6 bps | $34.2M | $15.8M |
+| 2026-09-17 20:50Z | asks | 119.1 bps | $33.0M | $17.0M |
+| 2026-09-18 19:01Z | bids | 106.3 bps | $23.8M | $26.2M |
+| 2026-09-18 19:01Z | asks |  96.1 bps | $38.7M | $11.3M |
+
+Bid depth **fell 30%** day over day while ask depth **rose 17%** — the variance
+is large and real. Not one of the four measurements comes within $11M of
+filling 50M. The margin is larger than the swing.
 
 The price dependence runs in the helpful direction, which is worth stating
 because the instinctive objection is "surely this depends on the price": it
