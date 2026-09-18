@@ -43,10 +43,13 @@ inline ClientOptions ParseClientOptions(const Flags& flags) {
   options.server = flags.Get("server", options.server);
   options.instrument = flags.Get("instrument", "");
   options.venues = flags.Get("venues", "");
+  // Bounded before the unsigned cast, which would otherwise launder a negative
+  // into an enormous positive: -1 becomes 4,294,967,295 microseconds, or 71
+  // minutes between updates, and the client merely looks hung.
   options.min_interval_micros =
-      static_cast<std::uint32_t>(flags.GetInt("min-interval-us", 0));
+      static_cast<std::uint32_t>(flags.GetInt("min-interval-us", 0, 0, 60'000'000));
   options.json = flags.GetBool("json", false);
-  options.max_updates = flags.GetInt("max-updates", 0);
+  options.max_updates = flags.GetInt("max-updates", 0, 0, 1'000'000);
   return options;
 }
 

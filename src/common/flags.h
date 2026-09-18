@@ -40,7 +40,6 @@ class Flags {
       const std::size_t equals = argument.find('=');
       if (equals == std::string::npos) {
         values_[argument] = "true";
-        bare_.push_back(argument);
       } else {
         values_[argument.substr(0, equals)] = argument.substr(equals + 1);
       }
@@ -72,6 +71,20 @@ class Flags {
   std::string Get(const std::string& key, const std::string& fallback) const {
     const auto it = values_.find(key);
     return it == values_.end() ? fallback : it->second;
+  }
+
+  // Range-checked. A type check catches malformed input; a range check catches
+  // input that parses fine and is still wrong, which this program punishes just
+  // as hard -- a negative staleness timeout parses perfectly and then excludes
+  // every venue from the merge forever. Every integer flag goes through the
+  // bounded form for that reason.
+  int GetInt(const std::string& key, int fallback, int minimum, int maximum) const {
+    const int value = GetInt(key, fallback);
+    if (value < minimum || value > maximum) {
+      Fail("--" + key + " expects a value between " + std::to_string(minimum) + " and " +
+           std::to_string(maximum) + ", got " + std::to_string(value));
+    }
+    return value;
   }
 
   int GetInt(const std::string& key, int fallback) const {
@@ -115,7 +128,6 @@ class Flags {
   }
 
   std::map<std::string, std::string> values_;
-  std::vector<std::string> bare_;
 };
 
 }  // namespace md

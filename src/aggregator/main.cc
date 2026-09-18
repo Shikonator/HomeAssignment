@@ -116,7 +116,10 @@ int main(int argc, char** argv) {
   if (wants("binance")) {
     md::BinanceProtocol::Config config;
     config.symbol = instrument;
-    config.snapshot_limit = flags.GetInt("snapshot-limit", 5000);
+    // Bounded locally against what Binance actually offers, so a bad value is
+    // reported where it was typed rather than surfacing later as "the venue
+    // rejected our snapshot and we are reconnecting".
+    config.snapshot_limit = flags.GetInt("snapshot-limit", 5000, 1, 5000);
     config.stream_url = flags.Get("binance-ws", config.stream_url);
     config.rest_url = flags.Get("binance-rest", config.rest_url);
     add_venue(std::make_unique<md::BinanceProtocol>(config));
@@ -142,7 +145,8 @@ int main(int argc, char** argv) {
 
   md::EngineConfig engine_config;
   engine_config.instrument = instrument;
-  engine_config.staleness_timeout = std::chrono::milliseconds(flags.GetInt("staleness-ms", 5000));
+  engine_config.staleness_timeout =
+      std::chrono::milliseconds(flags.GetInt("staleness-ms", 5000, 1, 86'400'000));
 
   std::vector<md::VenueFeed> feeds;
   for (std::size_t i = 0; i < runners.size(); ++i) {
