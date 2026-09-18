@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <span>
 #include <string>
 
 #include "google/protobuf/util/json_util.h"
@@ -26,6 +27,16 @@ struct ClientOptions {
   bool json = false;
   int max_updates = 0;  // 0 = run forever; used by the end-to-end tests
 };
+
+// Flags every publisher accepts. `extra` carries the band overrides that only
+// two of them take.
+inline void RequireKnownClientFlags(const Flags& flags,
+                                    std::initializer_list<std::string_view> extra = {}) {
+  std::vector<std::string_view> known{"server",  "instrument", "venues", "min-interval-us",
+                                      "json",    "max-updates", "quiet"};
+  known.insert(known.end(), extra.begin(), extra.end());
+  flags.RequireKnown(std::span<const std::string_view>(known));
+}
 
 inline ClientOptions ParseClientOptions(const Flags& flags) {
   ClientOptions options;

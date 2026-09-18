@@ -7,6 +7,8 @@
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
 
+#include "src/net/url.h"
+
 #include <memory>
 #include <utility>
 
@@ -19,43 +21,13 @@ namespace net = boost::asio;
 namespace ssl = boost::asio::ssl;
 using tcp = boost::asio::ip::tcp;
 
-struct Url {
-  bool secure = true;
-  std::string host;
-  std::string port;
-  std::string target = "/";
-};
-
-bool ParseHttpUrl(std::string_view url, Url* out) {
-  if (url.starts_with("https://")) {
-    out->secure = true;
-    url.remove_prefix(8);
-  } else if (url.starts_with("http://")) {
-    out->secure = false;
-    url.remove_prefix(7);
-  } else {
-    return false;
-  }
-  const std::size_t slash = url.find('/');
-  std::string_view authority = url.substr(0, slash);
-  out->target = (slash == std::string_view::npos) ? "/" : std::string(url.substr(slash));
-  const std::size_t colon = authority.rfind(':');
-  if (colon != std::string_view::npos) {
-    out->host = std::string(authority.substr(0, colon));
-    out->port = std::string(authority.substr(colon + 1));
-  } else {
-    out->host = std::string(authority);
-    out->port = out->secure ? "443" : "80";
-  }
-  return !out->host.empty();
-}
-
 class Session : public std::enable_shared_from_this<Session> {
  public:
   Session(net::io_context& io, ssl::context& tls, Url url, HttpGetHandler handler)
-      : resolver_(net::make_strand(io)),
-        tls_stream_(net::make_strand(io), tls),
-        plain_stream_(net::make_strand(io)),
+      : strand_(net::make_strand(io)),
+        resolver_(strand_),
+        tls_stream_(strand_, tls),
+        plain_stream_(strand_),
         url_(std::move(url)),
         handler_(std::move(handler)) {}
 
@@ -154,6 +126,13 @@ class Session : public std::enable_shared_from_this<Session> {
     handler_(ok, std::move(body), std::move(error));
   }
 
+  // ONE strand shared by every object in this session. Three separate strands
+  // would serialise nothing with respect to each other, which is the version
+  // that looks safe and is not -- Finish() touches both stream members and must
+  // not race the handler that invoked it. Today the runner drives one
+  // io_context per venue on a single thread, so this is belt and braces; it
+  // stops being belt and braces the day someone uses a thread pool.
+  net::strand<net::io_context::executor_type> strand_;
   tcp::resolver resolver_;
   beast::ssl_stream<beast::tcp_stream> tls_stream_;
   beast::tcp_stream plain_stream_;
@@ -170,7 +149,7 @@ class Session : public std::enable_shared_from_this<Session> {
 void HttpGet(net::io_context& io, ssl::context& tls, const std::string& url,
              HttpGetHandler handler) {
   Url parsed;
-  if (!ParseHttpUrl(url, &parsed)) {
+  if (!ParseUrl(url, &parsed) || (parsed.scheme != "http" && parsed.scheme != "https")) {
     handler(false, {}, "malformed url: " + url);
     return;
   }

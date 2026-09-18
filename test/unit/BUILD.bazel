@@ -45,7 +45,7 @@ cc_test(
     name = "ws_url_test",
     srcs = ["ws_url_test.cc"],
     deps = [
-        "//src/net:ws_client",
+        "//src/net:url",
         "@googletest//:gtest_main",
     ],
 )

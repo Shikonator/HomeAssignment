@@ -9,6 +9,7 @@
 
 int main(int argc, char** argv) {
   const md::Flags flags(argc, argv);
+  md::RequireKnownClientFlags(flags);
   const md::ClientOptions options = md::ParseClientOptions(flags);
   const bool quiet = flags.GetBool("quiet", false);
 

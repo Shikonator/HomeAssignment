@@ -12,10 +12,17 @@ cc_library(
 )
 
 cc_library(
+    name = "url",
+    srcs = ["url.cc"],
+    hdrs = ["url.h"],
+)
+
+cc_library(
     name = "ws_client",
     srcs = ["ws_client.cc"],
     hdrs = ["ws_client.h"],
     deps = [
+        ":url",
         "@boost.asio//:boost.asio",
         "@boost.beast//:boost.beast",
     ],
@@ -26,6 +33,7 @@ cc_library(
     srcs = ["http_client.cc"],
     hdrs = ["http_client.h"],
     deps = [
+        ":url",
         "@boost.asio//:boost.asio",
         "@boost.beast//:boost.beast",
     ],

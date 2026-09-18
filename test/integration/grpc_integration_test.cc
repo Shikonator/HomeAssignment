@@ -309,6 +309,12 @@ TEST_F(GrpcIntegrationTest, UnknownInstrumentIsRejected) {
 // The scenario staleness exists for. Without the heartbeat publish this is
 // unobservable: nothing arrives, so nothing is published, so no subscriber is
 // ever told the feeds died.
+//
+// THIS IS ALSO THE ONLY REGRESSION GUARD FOR THE HEARTBEAT PUBLISH, and it
+// guards it implicitly: with no venue activity there is nothing to publish on
+// change, so if Publish() ran only on change this test would never receive an
+// update at all. If it starts HANGING rather than failing an assertion, that is
+// what broke.
 TEST_F(GrpcIntegrationTest, StaleVenuesAreReportedWhenTheFeedsGoQuiet) {
   // Let both venues age past the staleness timeout with no new data.
   std::this_thread::sleep_for(std::chrono::milliseconds(500));

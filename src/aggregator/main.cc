@@ -72,6 +72,12 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  // The same list as --help above. An unrecognised flag is an error, not a
+  // silent default.
+  flags.RequireKnown({"help", "listen", "instrument", "venues", "binance-ws", "binance-rest",
+                      "okx-ws", "okx-symbol", "bybit-ws", "snapshot-limit", "staleness-ms",
+                      "ca-file", "record-dir"});
+
   const std::string listen = flags.Get("listen", "0.0.0.0:50051");
   const std::string instrument = flags.Get("instrument", "BTCUSDT");
   const std::string selected = flags.Get("venues", "binance,okx,bybit");

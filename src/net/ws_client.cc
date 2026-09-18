@@ -12,48 +12,6 @@ namespace ssl = boost::asio::ssl;
 namespace websocket = boost::beast::websocket;
 using tcp = boost::asio::ip::tcp;
 
-bool ParseWsUrl(std::string_view url, WsUrl* out) {
-  constexpr std::string_view kSecure = "wss://";
-  constexpr std::string_view kPlain = "ws://";
-
-  if (url.starts_with(kSecure)) {
-    out->secure = true;
-    url.remove_prefix(kSecure.size());
-  } else if (url.starts_with(kPlain)) {
-    out->secure = false;
-    url.remove_prefix(kPlain.size());
-  } else {
-    return false;
-  }
-
-  const std::size_t slash = url.find('/');
-  std::string_view authority = url.substr(0, slash);
-  out->target = (slash == std::string_view::npos) ? "/" : std::string(url.substr(slash));
-  if (authority.empty()) return false;
-
-  // A bracketed IPv6 literal contains colons of its own, so the port separator
-  // is the LAST colon after the closing bracket -- not simply "the last colon,
-  // unless brackets are present anywhere", which makes a bracketed authority
-  // unsplittable and silently swallows an explicit port into the host.
-  const std::size_t bracket = authority.rfind(']');
-  const std::size_t search_from = (bracket == std::string_view::npos) ? 0 : bracket + 1;
-  const std::size_t colon = authority.find(':', search_from);
-
-  if (colon != std::string_view::npos) {
-    out->host = std::string(authority.substr(0, colon));
-    out->port = std::string(authority.substr(colon + 1));
-    if (out->port.empty()) return false;
-  } else {
-    out->host = std::string(authority);
-    out->port = out->secure ? "443" : "80";
-  }
-  // Asio wants the bare address, without the brackets the URL syntax requires.
-  if (out->host.size() >= 2 && out->host.front() == '[' && out->host.back() == ']') {
-    out->host = out->host.substr(1, out->host.size() - 2);
-  }
-  return !out->host.empty();
-}
-
 ssl::context MakeTlsContext(const std::string& ca_file) {
   ssl::context context(ssl::context::tls_client);
   context.set_options(ssl::context::default_workarounds | ssl::context::no_sslv2 |
@@ -79,7 +37,10 @@ WsConnection::WsConnection(net::io_context& io, ssl::context& tls, Callbacks cal
       keepalive_timer_(io) {}
 
 void WsConnection::Open(const std::string& url) {
-  if (!ParseWsUrl(url, &url_)) {
+  // Reject an http(s) URL here rather than letting it connect: the scheme is a
+  // statement about protocol, and silently treating it as a websocket endpoint
+  // would fail later and less clearly.
+  if (!ParseUrl(url, &url_) || (url_.scheme != "ws" && url_.scheme != "wss")) {
     Finish("malformed websocket url: " + url);
     return;
   }

@@ -18,17 +18,9 @@
 #include <string_view>
 #include <variant>
 
+#include "src/net/url.h"
+
 namespace md {
-
-struct WsUrl {
-  bool secure = true;
-  std::string host;
-  std::string port;
-  std::string target = "/";
-};
-
-// Accepts ws:// and wss://. Port defaults to 80/443 by scheme, target to "/".
-bool ParseWsUrl(std::string_view url, WsUrl* out);
 
 // Builds a client TLS context. `ca_file` empty means "use the system trust
 // store". Verification is always on: disabling it to make a handshake work is
@@ -119,7 +111,7 @@ class WsConnection : public std::enable_shared_from_this<WsConnection> {
   boost::beast::flat_buffer buffer_;
   boost::asio::steady_timer keepalive_timer_;
 
-  WsUrl url_;
+  Url url_;
   State state_ = State::kIdle;
   bool finished_ = false;
 

@@ -34,6 +34,7 @@ void PrintSide(const char* label,
 
 int main(int argc, char** argv) {
   const md::Flags flags(argc, argv);
+  md::RequireKnownClientFlags(flags, {"bands-usd"});
   const md::ClientOptions options = md::ParseClientOptions(flags);
 
   auto stub = md::v1::MarketData::NewStub(md::Connect(options.server));
