@@ -1,0 +1,12 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+cc_test(
+    name = "grpc_integration_test",
+    size = "medium",
+    srcs = ["grpc_integration_test.cc"],
+    deps = [
+        "//src/aggregator:engine",
+        "//src/aggregator:service",
+        "@googletest//:gtest_main",
+    ],
+)

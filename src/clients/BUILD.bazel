@@ -1,0 +1,39 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "common",
+    hdrs = ["common.h"],
+    deps = [
+        "//proto/md/v1:market_data_cc_grpc",
+        "//src/common:flags",
+        "//src/core",
+        "@grpc//:grpc++",
+        "@protobuf//:protobuf",
+    ],
+)
+
+cc_binary(
+    name = "bbo_client",
+    srcs = ["bbo_main.cc"],
+    deps = [":common"],
+)
+
+cc_binary(
+    name = "volume_bands_client",
+    srcs = ["volume_bands_main.cc"],
+    deps = [":common"],
+)
+
+cc_binary(
+    name = "price_bands_client",
+    srcs = ["price_bands_main.cc"],
+    deps = [":common"],
+)
+
+cc_binary(
+    name = "status_client",
+    srcs = ["status_main.cc"],
+    deps = [":common"],
+)

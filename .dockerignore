@@ -1,0 +1,9 @@
+# bazel-* are symlinks into the host's cache directory; copying them into the
+# build context would either fail or drag in gigabytes of unrelated output.
+bazel-*
+.git
+.github
+.idea
+cmake-build-debug
+.DS_Store
+*.pdf

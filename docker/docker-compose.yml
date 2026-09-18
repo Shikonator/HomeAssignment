@@ -1,0 +1,71 @@
+# Runs the whole system on one host:
+#     docker compose -f docker/docker-compose.yml up --build
+#
+# The aggregator needs OUTBOUND INTERNET to reach Binance, OKX and Bybit. The
+# offline test suites do not; see README.
+name: cex-aggregator
+
+services:
+  aggregator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: aggregator
+    image: cex-aggregator/aggregator
+    command:
+      - --listen=0.0.0.0:50051
+      - --instrument=BTCUSDT
+      - --venues=binance,okx,bybit
+    ports:
+      - "50051:50051"
+    healthcheck:
+      # Exits non-zero until at least one venue is LIVE, which is the weakest
+      # condition under which the aggregator can serve anything useful. The
+      # clients wait on this rather than racing the server and printing a
+      # screenful of connection errors on the first run.
+      test: ["CMD", "status_client", "--server=127.0.0.1:50051", "--quiet"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+  bbo:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: bbo-client
+    image: cex-aggregator/bbo-client
+    command: ["--server=aggregator:50051"]
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    restart: unless-stopped
+
+  volume-bands:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: volume-bands-client
+    image: cex-aggregator/volume-bands-client
+    # Bands are a property of the REQUEST, not the build. Override them here to
+    # see the server honour a different set:
+    #   command: ["--server=aggregator:50051", "--bands-usd=2000000,7000000"]
+    command: ["--server=aggregator:50051"]
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    restart: unless-stopped
+
+  price-bands:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: price-bands-client
+    image: cex-aggregator/price-bands-client
+    command: ["--server=aggregator:50051"]
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    restart: unless-stopped

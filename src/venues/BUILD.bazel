@@ -1,0 +1,35 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "venues",
+    srcs = [
+        "binance.cc",
+        "bybit.cc",
+        "okx.cc",
+    ],
+    hdrs = [
+        "binance.h",
+        "bybit.h",
+        "okx.h",
+        "venue.h",
+    ],
+    deps = [
+        "//src/core",
+        "//src/net:json",
+    ],
+)
+
+cc_library(
+    name = "runner",
+    srcs = ["runner.cc"],
+    hdrs = ["runner.h"],
+    deps = [
+        ":venues",
+        "//src/core",
+        "//src/common:log",
+        "//src/net:http_client",
+        "//src/net:ws_client",
+    ],
+)

@@ -1,0 +1,96 @@
+# Conformance suite: asserts the aggregator's analytics against golden fixtures
+# produced by an independent reference implementation (reference/).
+#
+# The goldens are deliberately NOT derived from the code under test -- see
+# README.md. A disagreement means one implementation is wrong; establish which
+# rather than editing a golden.
+
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "fixtures",
+    testonly = True,
+    srcs = glob(["fixtures/*.json"]),
+)
+
+# Real venue sessions captured by reference/capture.py, an independent client.
+# Not captured by the aggregator's own recorder: if the same code captured and
+# replayed, a systematic capture bug would cancel itself out.
+filegroup(
+    name = "recordings",
+    testonly = True,
+    srcs = glob(["recordings/*.jsonl"]),
+)
+
+# The reference implementation and its generator are deliberately outside the
+# C++ toolchain so the goldens cannot be derived from the code under test.
+#
+#   python3 reference/gen_fixtures.py     regenerate
+#   python3 reference/check_fixtures.py   validate the goldens themselves
+filegroup(
+    name = "reference_sources",
+    testonly = True,
+    srcs = glob(["reference/*.py"]),
+)
+
+cc_library(
+    name = "fixture",
+    testonly = True,
+    srcs = ["fixture.cc"],
+    hdrs = ["fixture.h"],
+    data = [":fixtures"],
+    features = ["layering_check"],
+    deps = [
+        "//src/core",
+        "@googletest//:gtest",
+        "@simdjson",
+    ],
+)
+
+cc_test(
+    name = "analytics_conformance_test",
+    size = "small",
+    srcs = ["analytics_conformance_test.cc"],
+    data = [":fixtures"],
+    features = ["layering_check"],
+    deps = [
+        ":fixture",
+        "//src/core",
+        "@googletest//:gtest_main",
+        "@simdjson",
+    ],
+)
+
+cc_test(
+    name = "parser_conformance_test",
+    size = "small",
+    srcs = ["parser_conformance_test.cc"],
+    data = [":fixtures"],
+    features = ["layering_check"],
+    deps = [
+        ":fixture",
+        "//src/core",
+        "@googletest//:gtest_main",
+        "@simdjson",
+    ],
+)
+
+cc_test(
+    name = "replay_conformance_test",
+    size = "small",
+    srcs = ["replay_conformance_test.cc"],
+    data = [
+        ":fixtures",
+        ":recordings",
+    ],
+    features = ["layering_check"],
+    deps = [
+        ":fixture",
+        "//src/core",
+        "//src/venues",
+        "@googletest//:gtest_main",
+        "@simdjson",
+    ],
+)

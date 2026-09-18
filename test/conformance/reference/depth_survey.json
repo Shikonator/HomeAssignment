@@ -1,0 +1,192 @@
+{
+  "captured_utc": "2026-09-17 20:50:07Z",
+  "instrument": "BTCUSDT",
+  "per_venue": {
+    "binance": {
+      "bids": {
+        "levels": 5000,
+        "qty_e8": 35097046000,
+        "notional_e8": 2675621911086400,
+        "span_bps": 101.6
+      },
+      "asks": {
+        "levels": 5000,
+        "qty_e8": 29119912000,
+        "notional_e8": 2236728489869740,
+        "span_bps": 118.7
+      }
+    },
+    "okx": {
+      "bids": {
+        "levels": 400,
+        "qty_e8": 6007557038,
+        "notional_e8": 459406343372828,
+        "span_bps": 11.8
+      },
+      "asks": {
+        "levels": 400,
+        "qty_e8": 8588111295,
+        "notional_e8": 658017941901423,
+        "span_bps": 30.2
+      }
+    },
+    "bybit": {
+      "bids": {
+        "levels": 200,
+        "qty_e8": 3690191500,
+        "notional_e8": 282163513727790,
+        "span_bps": 16.3
+      },
+      "asks": {
+        "levels": 200,
+        "qty_e8": 5301059600,
+        "notional_e8": 406008173426730,
+        "span_bps": 19.4
+      }
+    }
+  },
+  "consolidated": {
+    "bids": {
+      "levels": 5452,
+      "touch_e8": 7652635000000,
+      "qty_e8": 44794794538,
+      "notional_e8": 3417191768187018,
+      "span_bps": 101.6,
+      "volume_bands": [
+        {
+          "target_musd": 1,
+          "fully_filled": true,
+          "worst_e8": 7650569000000,
+          "vwap_e8": 7651259570960
+        },
+        {
+          "target_musd": 5,
+          "fully_filled": true,
+          "worst_e8": 7648200000000,
+          "vwap_e8": 7649761298386
+        },
+        {
+          "target_musd": 10,
+          "fully_filled": true,
+          "worst_e8": 7645710000000,
+          "vwap_e8": 7648423448320
+        },
+        {
+          "target_musd": 25,
+          "fully_filled": true,
+          "worst_e8": 7615000000000,
+          "vwap_e8": 7639439377271
+        },
+        {
+          "target_musd": 50,
+          "fully_filled": false,
+          "worst_e8": 7574879000000,
+          "vwap_e8": 7628546583215
+        }
+      ],
+      "price_bands": [
+        {
+          "offset_bps": 50,
+          "depth_limited": false,
+          "qty_e8": 34306229538,
+          "notional_e8": 2620416382569428
+        },
+        {
+          "offset_bps": 100,
+          "depth_limited": false,
+          "qty_e8": 44706161538,
+          "notional_e8": 3410477649312678
+        },
+        {
+          "offset_bps": 200,
+          "depth_limited": true,
+          "qty_e8": 44794794538,
+          "notional_e8": 3417191768187018
+        },
+        {
+          "offset_bps": 500,
+          "depth_limited": true,
+          "qty_e8": 44794794538,
+          "notional_e8": 3417191768187018
+        },
+        {
+          "offset_bps": 1000,
+          "depth_limited": true,
+          "qty_e8": 44794794538,
+          "notional_e8": 3417191768187018
+        }
+      ]
+    },
+    "asks": {
+      "levels": 5517,
+      "touch_e8": 7652330000000,
+      "qty_e8": 43009082895,
+      "notional_e8": 3300754605197893,
+      "span_bps": 119.1,
+      "volume_bands": [
+        {
+          "target_musd": 1,
+          "fully_filled": true,
+          "worst_e8": 7653129000000,
+          "vwap_e8": 7652832060773
+        },
+        {
+          "target_musd": 5,
+          "fully_filled": true,
+          "worst_e8": 7655640000000,
+          "vwap_e8": 7654164920808
+        },
+        {
+          "target_musd": 10,
+          "fully_filled": true,
+          "worst_e8": 7658504000000,
+          "vwap_e8": 7655530038259
+        },
+        {
+          "target_musd": 25,
+          "fully_filled": true,
+          "worst_e8": 7681690000000,
+          "vwap_e8": 7661117932711
+        },
+        {
+          "target_musd": 50,
+          "fully_filled": false,
+          "worst_e8": 7743484000000,
+          "vwap_e8": 7674552403863
+        }
+      ],
+      "price_bands": [
+        {
+          "offset_bps": 50,
+          "depth_limited": false,
+          "qty_e8": 33268484895,
+          "notional_e8": 2548895613861233
+        },
+        {
+          "offset_bps": 100,
+          "depth_limited": false,
+          "qty_e8": 39789660895,
+          "notional_e8": 3051711128758953
+        },
+        {
+          "offset_bps": 200,
+          "depth_limited": true,
+          "qty_e8": 43009082895,
+          "notional_e8": 3300754605197893
+        },
+        {
+          "offset_bps": 500,
+          "depth_limited": true,
+          "qty_e8": 43009082895,
+          "notional_e8": 3300754605197893
+        },
+        {
+          "offset_bps": 1000,
+          "depth_limited": true,
+          "qty_e8": 43009082895,
+          "notional_e8": 3300754605197893
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "core",
+    # Kept on for our own code; see .bazelrc for why it is off globally.
+    features = ["layering_check"],
+    srcs = [
+        "analytics.cc",
+        "clock.cc",
+        "consolidated.cc",
+        "fixed.cc",
+    ],
+    hdrs = [
+        "analytics.h",
+        "book.h",
+        "clock.h",
+        "conflating_slot.h",
+        "consolidated.h",
+        "fixed.h",
+        "retry.h",
+        "spsc_ring.h",
+    ],
+)

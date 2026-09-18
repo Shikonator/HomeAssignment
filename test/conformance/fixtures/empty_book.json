@@ -1,0 +1,317 @@
+{
+  "name": "empty_book",
+  "description": "No venue has any liquidity. Every scalar is 0, every band list is still emitted with zeroed members, and nothing divides by zero.",
+  "instrument": "BTCUSDT",
+  "scale": {
+    "price_e8": 100000000,
+    "qty_e8": 100000000
+  },
+  "input": {
+    "venues": {
+      "binance": {
+        "bids": [],
+        "asks": []
+      },
+      "okx": {
+        "bids": [],
+        "asks": []
+      },
+      "bybit": {
+        "bids": [],
+        "asks": []
+      }
+    },
+    "venue_filter": null,
+    "merge_depth": null
+  },
+  "request": {
+    "notional_bands_e8": [
+      100000000000000,
+      500000000000000,
+      1000000000000000,
+      2500000000000000,
+      5000000000000000
+    ],
+    "offsets_bps_e8": [
+      5000000000,
+      10000000000,
+      20000000000,
+      50000000000,
+      100000000000
+    ]
+  },
+  "expected": {
+    "touch": {
+      "best_bid_e8": 0,
+      "best_ask_e8": 0,
+      "mid_price_e8": 0,
+      "spread_e8": 0,
+      "spread_bps_e8": 0,
+      "crossed": false,
+      "has_bid": false,
+      "has_ask": false
+    },
+    "merged": {
+      "bids": [],
+      "asks": []
+    },
+    "volume_bands": {
+      "bid": [
+        {
+          "notional_target_e8": 100000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 500000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 1000000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 2500000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 5000000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 0,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": true
+        }
+      ],
+      "ask": [
+        {
+          "notional_target_e8": 100000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 500000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 1000000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 2500000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 5000000000000000,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": false
+        },
+        {
+          "notional_target_e8": 0,
+          "vwap_price_e8": 0,
+          "worst_price_e8": 0,
+          "filled_qty_e8": 0,
+          "filled_notional_e8": 0,
+          "fully_filled": false,
+          "levels_consumed": 0,
+          "open_ended": true
+        }
+      ]
+    },
+    "price_bands": {
+      "bid": [
+        {
+          "offset_bps_e8": 5000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 10000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 20000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 50000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 100000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 0,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": true,
+          "depth_limited": false
+        }
+      ],
+      "ask": [
+        {
+          "offset_bps_e8": 5000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 10000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 20000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 50000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 100000000000,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": false,
+          "depth_limited": true
+        },
+        {
+          "offset_bps_e8": 0,
+          "bound_price_e8": 0,
+          "qty_e8": 0,
+          "notional_e8": 0,
+          "vwap_price_e8": 0,
+          "levels": 0,
+          "open_ended": true,
+          "depth_limited": false
+        }
+      ]
+    }
+  },
+  "properties": {
+    "max_px_times_qty_intermediate": "0",
+    "overflows_int64_if_naive": false,
+    "bid_levels": 0,
+    "ask_levels": 0
+  }
+}

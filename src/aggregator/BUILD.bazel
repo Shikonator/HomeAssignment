@@ -1,0 +1,37 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "engine",
+    srcs = ["engine.cc"],
+    hdrs = ["engine.h"],
+    deps = [
+        "//src/core",
+        "//src/venues:runner",
+    ],
+)
+
+cc_library(
+    name = "service",
+    srcs = ["service.cc"],
+    hdrs = ["service.h"],
+    deps = [
+        ":engine",
+        "//proto/md/v1:market_data_cc_grpc",
+        "@grpc//:grpc++",
+    ],
+)
+
+cc_binary(
+    name = "aggregator",
+    srcs = ["main.cc"],
+    deps = [
+        ":engine",
+        ":service",
+        "//src/common:flags",
+        "//src/venues",
+        "//src/venues:runner",
+        "@grpc//:grpc++_reflection",
+    ],
+)

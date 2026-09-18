@@ -1,0 +1,52 @@
+# Bazel 9 / bzlmod. Platform-specific blocks below are selected automatically.
+build --enable_platform_specific_config
+
+build --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
+build --copt=-fno-omit-frame-pointer
+
+# Apple's toolchain defaults to a deployment target older than the aligned-new
+# support that Abseil (and our own cache-line-aligned types) require.
+build:macos --macos_minimum_os=13.0
+build:macos --host_macos_minimum_os=13.0
+build:macos --cxxopt=-Wno-deprecated-declarations
+
+build:linux --cxxopt=-Wno-deprecated-declarations
+
+# THE SINGLE MOST IMPORTANT FLAG IN THIS FILE.
+#
+# grpc links BoringSSL. Boost.Asio's TLS support defaults to OpenSSL. Both
+# export SSL_*/EVP_* symbols, so linking them into one binary is at best a
+# duplicate-symbol error and at worst links successfully and has Beast call
+# BoringSSL functions through OpenSSL's struct layouts -- a handshake ghost that
+# would present as "the exchange disconnected us".
+#
+# boost.asio's Bazel module exposes an :ssl flag precisely for this. Pointing it
+# at BoringSSL means the process contains exactly ONE TLS implementation, shared
+# by the venue connections and by grpc.
+build --@boost.asio//:ssl=boringssl
+
+# grpc 1.84.0 ships a layering_check violation in its own BUILD file:
+# chttp2_transport.h includes http2_status.h without the target declaring that
+# dependency. Disable the check globally so an upstream packaging bug does not
+# block the build, and re-enable it explicitly on our own targets so we keep it
+# where it is actually ours to honour.
+build --features=-layering_check
+
+# Optimised by default: this is a latency-sensitive service and the default
+# -O0 build is not representative of anything we claim about it.
+build --compilation_mode=opt
+
+# A debug/assert build for running the test suite with invariants enabled.
+build:debug --compilation_mode=dbg
+build:debug --copt=-DMD_ENABLE_INVARIANT_CHECKS=1
+
+# ThreadSanitizer, for the concurrency primitives. Scoped to targets that do
+# not pull in gRPC, which brings its own considerable TSAN noise and would bury
+# a real finding.
+build:tsan --copt=-fsanitize=thread
+build:tsan --copt=-g
+build:tsan --linkopt=-fsanitize=thread
+build:tsan --compilation_mode=dbg
+
+test --test_output=errors
+test --test_summary=terse

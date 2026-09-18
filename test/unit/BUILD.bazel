@@ -1,0 +1,51 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_test(
+    name = "fixed_test",
+    srcs = ["fixed_test.cc"],
+    deps = ["//src/core", "@googletest//:gtest_main"],
+)
+
+cc_test(
+    name = "book_test",
+    srcs = ["book_test.cc"],
+    deps = ["//src/core", "@googletest//:gtest_main"],
+)
+
+cc_test(
+    name = "analytics_test",
+    srcs = ["analytics_test.cc"],
+    deps = ["//src/core", "@googletest//:gtest_main"],
+)
+
+cc_test(
+    name = "concurrency_test",
+    srcs = ["concurrency_test.cc"],
+    deps = ["//src/core", "@googletest//:gtest_main"],
+)
+
+cc_test(
+    name = "venue_protocol_test",
+    srcs = ["venue_protocol_test.cc"],
+    deps = [
+        "//src/venues",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "retry_test",
+    srcs = ["retry_test.cc"],
+    deps = ["//src/core", "@googletest//:gtest_main"],
+)
+
+cc_test(
+    name = "ws_url_test",
+    srcs = ["ws_url_test.cc"],
+    deps = [
+        "//src/net:ws_client",
+        "@googletest//:gtest_main",
+    ],
+)

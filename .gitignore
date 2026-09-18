@@ -1,0 +1,13 @@
+# Bazel's convenience symlinks point into the user's cache directory. In a
+# clone they would be broken links, so they must never be committed.
+bazel-*
+
+# CLion / CMake leftovers from before the project moved to Bazel.
+cmake-build-debug/
+.idea/
+
+.DS_Store
+
+# The company's own assignment document. Kept locally, never redistributed
+# in the repo they will download.
+*.pdf

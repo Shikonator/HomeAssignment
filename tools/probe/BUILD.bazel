@@ -1,0 +1,10 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "tls_probe",
+    srcs = ["tls_probe.cc"],
+    deps = [
+        "@boost.beast//:boost.beast",
+        "@grpc//:grpc++",
+    ],
+)

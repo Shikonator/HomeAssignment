@@ -1,0 +1,32 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "json",
+    hdrs = ["json.h"],
+    deps = [
+        "//src/core",
+        "@simdjson",
+    ],
+)
+
+cc_library(
+    name = "ws_client",
+    srcs = ["ws_client.cc"],
+    hdrs = ["ws_client.h"],
+    deps = [
+        "@boost.asio//:boost.asio",
+        "@boost.beast//:boost.beast",
+    ],
+)
+
+cc_library(
+    name = "http_client",
+    srcs = ["http_client.cc"],
+    hdrs = ["http_client.h"],
+    deps = [
+        "@boost.asio//:boost.asio",
+        "@boost.beast//:boost.beast",
+    ],
+)

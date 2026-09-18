@@ -1,0 +1,403 @@
+{
+  "name": "venue_scenarios",
+  "description": "Hand-built frame sequences exercising the unhealthy paths a live recording cannot contain: sequence gaps, no-change heartbeats, mid-stream snapshots, rejected subscriptions and cross-instrument frames. Written from each venue's documented rules.",
+  "scenarios": [
+    {
+      "name": "okx_snapshot_then_update",
+      "venue": "okx",
+      "description": "Baseline: a snapshot seeds the book, a chained update amends it.",
+      "steps": [
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"snapshot\", \"data\": [{\"asks\": [[\"76500.1\", \"1.5\", \"0\", \"1\"]], \"bids\": [[\"76500.0\", \"2.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 100, \"prevSeqId\": -1}]}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"update\", \"data\": [{\"asks\": [], \"bids\": [[\"76499.0\", \"3.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 101, \"prevSeqId\": 100}]}",
+          "expect": "ok",
+          "updates": 1
+        }
+      ],
+      "final_bids": [
+        [
+          "76500.0",
+          "2.0"
+        ],
+        [
+          "76499.0",
+          "3.0"
+        ]
+      ],
+      "final_asks": [
+        [
+          "76500.1",
+          "1.5"
+        ]
+      ]
+    },
+    {
+      "name": "okx_gap_then_no_change_heartbeat_must_resync",
+      "venue": "okx",
+      "description": "THE ordering bug. OKX repeats the sequence number when nothing moved. If that no-change shortcut is checked BEFORE continuity, a gap followed by a heartbeat skips validation entirely and the book diverges permanently with no error. Continuity must be checked first. This is the regression guard for that ordering, and it matters more than it looks: the OKX checksum was the only other detector for silent divergence and it is deliberately not implemented.",
+      "steps": [
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"snapshot\", \"data\": [{\"asks\": [[\"76500.1\", \"1.5\", \"0\", \"1\"]], \"bids\": [[\"76500.0\", \"2.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 100, \"prevSeqId\": -1}]}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"update\", \"data\": [{\"asks\": [], \"bids\": [], \"ts\": \"1758138000000\", \"seqId\": 150, \"prevSeqId\": 150}]}",
+          "expect": "needs_resync",
+          "updates": 0
+        }
+      ]
+    },
+    {
+      "name": "okx_in_sequence_no_change_heartbeat_is_a_no_op",
+      "venue": "okx",
+      "description": "The legitimate case the shortcut exists for must still work: a heartbeat whose prevSeqId matches our position is accepted and emits nothing, and the stream continues from the same sequence.",
+      "steps": [
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"snapshot\", \"data\": [{\"asks\": [[\"76500.1\", \"1.5\", \"0\", \"1\"]], \"bids\": [[\"76500.0\", \"2.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 100, \"prevSeqId\": -1}]}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"update\", \"data\": [{\"asks\": [], \"bids\": [], \"ts\": \"1758138000000\", \"seqId\": 100, \"prevSeqId\": 100}]}",
+          "expect": "ok",
+          "updates": 0
+        },
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"update\", \"data\": [{\"asks\": [], \"bids\": [[\"76498.0\", \"1.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 101, \"prevSeqId\": 100}]}",
+          "expect": "ok",
+          "updates": 1
+        }
+      ],
+      "final_bids": [
+        [
+          "76500.0",
+          "2.0"
+        ],
+        [
+          "76498.0",
+          "1.0"
+        ]
+      ],
+      "final_asks": [
+        [
+          "76500.1",
+          "1.5"
+        ]
+      ]
+    },
+    {
+      "name": "okx_sequence_gap_forces_resync",
+      "venue": "okx",
+      "description": "An update whose prevSeqId does not match our position is a gap.",
+      "steps": [
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"snapshot\", \"data\": [{\"asks\": [[\"76500.1\", \"1.5\", \"0\", \"1\"]], \"bids\": [[\"76500.0\", \"2.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 100, \"prevSeqId\": -1}]}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"update\", \"data\": [{\"asks\": [], \"bids\": [[\"76499.0\", \"1.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 106, \"prevSeqId\": 105}]}",
+          "expect": "needs_resync",
+          "updates": 0
+        }
+      ]
+    },
+    {
+      "name": "okx_failed_frame_appends_nothing",
+      "venue": "okx",
+      "description": "A frame carrying two entries where the first is valid and the second breaks sequence must append NOTHING. Applying the first and then reporting failure would leave the caller holding half a batch with a verdict telling it to discard state.",
+      "steps": [
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"snapshot\", \"data\": [{\"asks\": [[\"76500.1\", \"1.5\", \"0\", \"1\"]], \"bids\": [[\"76500.0\", \"2.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 100, \"prevSeqId\": -1}]}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"update\", \"data\": [{\"asks\": [], \"bids\": [[\"76499.0\", \"1.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 101, \"prevSeqId\": 100}, {\"asks\": [], \"bids\": [[\"76498.0\", \"1.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 999, \"prevSeqId\": 998}]}",
+          "expect": "needs_resync",
+          "updates": 0
+        }
+      ]
+    },
+    {
+      "name": "okx_subscribe_rejection_is_fatal",
+      "venue": "okx",
+      "description": "An unknown instrument fails identically on every reconnect. Treating it as transient loops forever while presenting as a network problem.",
+      "steps": [
+        {
+          "frame": "{\"event\": \"error\", \"code\": \"60018\", \"msg\": \"Wrong URL or channel:books,instId:NOPE-USDT\"}",
+          "expect": "fatal",
+          "updates": 0
+        }
+      ]
+    },
+    {
+      "name": "okx_frame_for_another_instrument_is_ignored",
+      "venue": "okx",
+      "description": "Moot with one connection per subscription; it is the bug that appears the day someone multiplexes.",
+      "steps": [
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"BTC-USDT\"}, \"action\": \"snapshot\", \"data\": [{\"asks\": [[\"76500.1\", \"1.5\", \"0\", \"1\"]], \"bids\": [[\"76500.0\", \"2.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 100, \"prevSeqId\": -1}]}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"arg\": {\"channel\": \"books\", \"instId\": \"ETH-USDT\"}, \"action\": \"snapshot\", \"data\": [{\"asks\": [[\"2.0\", \"1.0\", \"0\", \"1\"]], \"bids\": [[\"1.0\", \"1.0\", \"0\", \"1\"]], \"ts\": \"1758138000000\", \"seqId\": 500, \"prevSeqId\": -1}]}",
+          "expect": "ok",
+          "updates": 0
+        }
+      ],
+      "final_bids": [
+        [
+          "76500.0",
+          "2.0"
+        ]
+      ],
+      "final_asks": [
+        [
+          "76500.1",
+          "1.5"
+        ]
+      ]
+    },
+    {
+      "name": "bybit_snapshot_then_delta",
+      "venue": "bybit",
+      "description": "Baseline: snapshot then a delta whose u follows by one.",
+      "steps": [
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"snapshot\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76500.00\", \"2.0\"]], \"a\": [[\"76500.10\", \"1.5\"]], \"u\": 1, \"seq\": 1}}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"delta\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76499.00\", \"1.0\"]], \"a\": [], \"u\": 2, \"seq\": 2}}",
+          "expect": "ok",
+          "updates": 1
+        }
+      ],
+      "final_bids": [
+        [
+          "76500.00",
+          "2.0"
+        ],
+        [
+          "76499.00",
+          "1.0"
+        ]
+      ],
+      "final_asks": [
+        [
+          "76500.10",
+          "1.5"
+        ]
+      ]
+    },
+    {
+      "name": "bybit_gap_forces_resync",
+      "venue": "bybit",
+      "description": "A non-consecutive u means at least one delta was lost.",
+      "steps": [
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"snapshot\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76500.00\", \"2.0\"]], \"a\": [[\"76500.10\", \"1.5\"]], \"u\": 1, \"seq\": 1}}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"delta\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76499.00\", \"1.0\"]], \"a\": [], \"u\": 5, \"seq\": 5}}",
+          "expect": "needs_resync",
+          "updates": 0
+        }
+      ]
+    },
+    {
+      "name": "bybit_midstream_snapshot_replaces_book",
+      "venue": "bybit",
+      "description": "Bybit sends a fresh snapshot after its own internal reconnect, mid-stream and unannounced. It replaces the book wholesale and restarts sequencing; trying to amend with it would merge two different books.",
+      "steps": [
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"snapshot\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76500.00\", \"2.0\"]], \"a\": [[\"76500.10\", \"1.5\"]], \"u\": 1, \"seq\": 1}}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"delta\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76499.00\", \"1.0\"]], \"a\": [], \"u\": 2, \"seq\": 2}}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"snapshot\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76400.00\", \"5.0\"]], \"a\": [[\"76400.10\", \"4.0\"]], \"u\": 90, \"seq\": 90}}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"delta\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76399.00\", \"1.0\"]], \"a\": [], \"u\": 91, \"seq\": 91}}",
+          "expect": "ok",
+          "updates": 1
+        }
+      ],
+      "final_bids": [
+        [
+          "76400.00",
+          "5.0"
+        ],
+        [
+          "76399.00",
+          "1.0"
+        ]
+      ],
+      "final_asks": [
+        [
+          "76400.10",
+          "4.0"
+        ]
+      ]
+    },
+    {
+      "name": "bybit_delete_level_with_zero_quantity",
+      "venue": "bybit",
+      "description": "Quantity zero removes the level rather than resting at zero.",
+      "steps": [
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"snapshot\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76500.00\", \"2.0\"], [\"76499.00\", \"3.0\"]], \"a\": [[\"76500.10\", \"1.5\"]], \"u\": 1, \"seq\": 1}}",
+          "expect": "ok",
+          "updates": 1
+        },
+        {
+          "frame": "{\"topic\": \"orderbook.200.BTCUSDT\", \"type\": \"delta\", \"ts\": 1758138000000, \"data\": {\"s\": \"BTCUSDT\", \"b\": [[\"76499.00\", \"0\"]], \"a\": [], \"u\": 2, \"seq\": 2}}",
+          "expect": "ok",
+          "updates": 1
+        }
+      ],
+      "final_bids": [
+        [
+          "76500.00",
+          "2.0"
+        ]
+      ],
+      "final_asks": [
+        [
+          "76500.10",
+          "1.5"
+        ]
+      ]
+    },
+    {
+      "name": "bybit_subscribe_rejection_is_fatal",
+      "venue": "bybit",
+      "description": "A rejected subscription is not transient.",
+      "steps": [
+        {
+          "frame": "{\"success\": false, \"ret_msg\": \"Invalid symbol\", \"op\": \"subscribe\", \"conn_id\": \"abc\"}",
+          "expect": "fatal",
+          "updates": 0
+        }
+      ]
+    },
+    {
+      "name": "binance_buffers_before_snapshot_then_reconciles",
+      "venue": "binance",
+      "description": "The reconciliation everyone gets wrong. Events arriving before the REST snapshot are BUFFERED, not applied and not dropped. On the snapshot, events wholly older than lastUpdateId are discarded, the first survivor must straddle it (U <= id+1 <= u), and the rest replay in order.",
+      "steps": [
+        {
+          "frame": "{\"e\": \"depthUpdate\", \"E\": 1758138000000, \"s\": \"BTCUSDT\", \"U\": 95, \"u\": 99, \"b\": [[\"76490.00\", \"1.0\"]], \"a\": []}",
+          "expect": "ok",
+          "updates": 0
+        },
+        {
+          "frame": "{\"e\": \"depthUpdate\", \"E\": 1758138000000, \"s\": \"BTCUSDT\", \"U\": 100, \"u\": 104, \"b\": [[\"76499.00\", \"2.0\"]], \"a\": []}",
+          "expect": "ok",
+          "updates": 0
+        },
+        {
+          "frame": "{\"e\": \"depthUpdate\", \"E\": 1758138000000, \"s\": \"BTCUSDT\", \"U\": 105, \"u\": 108, \"b\": [[\"76498.00\", \"3.0\"]], \"a\": []}",
+          "expect": "ok",
+          "updates": 0
+        },
+        {
+          "kind": "rest_snapshot",
+          "frame": "{\"lastUpdateId\": 103, \"bids\": [[\"76500.00\", \"5.0\"]], \"asks\": [[\"76500.10\", \"4.0\"]]}",
+          "expect": "ok",
+          "updates": 3
+        }
+      ],
+      "final_bids": [
+        [
+          "76500.00",
+          "5.0"
+        ],
+        [
+          "76499.00",
+          "2.0"
+        ],
+        [
+          "76498.00",
+          "3.0"
+        ]
+      ],
+      "final_asks": [
+        [
+          "76500.10",
+          "4.0"
+        ]
+      ]
+    },
+    {
+      "name": "binance_hole_between_snapshot_and_stream",
+      "venue": "binance",
+      "description": "If the first surviving event starts after lastUpdateId+1 there is a hole the stream cannot fill, and the only correct response is a newer snapshot rather than applying across the gap.",
+      "steps": [
+        {
+          "frame": "{\"e\": \"depthUpdate\", \"E\": 1758138000000, \"s\": \"BTCUSDT\", \"U\": 200, \"u\": 204, \"b\": [[\"76499.00\", \"2.0\"]], \"a\": []}",
+          "expect": "ok",
+          "updates": 0
+        },
+        {
+          "kind": "rest_snapshot",
+          "frame": "{\"lastUpdateId\": 100, \"bids\": [[\"76500.00\", \"5.0\"]], \"asks\": [[\"76500.10\", \"4.0\"]]}",
+          "expect": "needs_resync"
+        }
+      ]
+    },
+    {
+      "name": "binance_gap_after_sync_forces_resync",
+      "venue": "binance",
+      "description": "Live events must satisfy U == previous u + 1.",
+      "steps": [
+        {
+          "frame": "{\"e\": \"depthUpdate\", \"E\": 1758138000000, \"s\": \"BTCUSDT\", \"U\": 101, \"u\": 104, \"b\": [[\"76499.00\", \"2.0\"]], \"a\": []}",
+          "expect": "ok",
+          "updates": 0
+        },
+        {
+          "kind": "rest_snapshot",
+          "frame": "{\"lastUpdateId\": 100, \"bids\": [[\"76500.00\", \"5.0\"]], \"asks\": [[\"76500.10\", \"4.0\"]]}",
+          "expect": "ok",
+          "updates": 2
+        },
+        {
+          "frame": "{\"e\": \"depthUpdate\", \"E\": 1758138000000, \"s\": \"BTCUSDT\", \"U\": 106, \"u\": 108, \"b\": [[\"76498.00\", \"1.0\"]], \"a\": []}",
+          "expect": "needs_resync",
+          "updates": 0
+        }
+      ]
+    },
+    {
+      "name": "binance_frame_for_another_symbol_is_ignored",
+      "venue": "binance",
+      "description": "Same multiplexing guard as the other two venues.",
+      "steps": [
+        {
+          "frame": "{\"e\": \"depthUpdate\", \"E\": 1758138000000, \"s\": \"ETHUSDT\", \"U\": 1, \"u\": 2, \"b\": [[\"1.0\", \"1.0\"]], \"a\": []}",
+          "expect": "ok",
+          "updates": 0
+        }
+      ]
+    }
+  ]
+}
