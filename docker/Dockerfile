@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
         curl \
+        lld \
         python3 \
         unzip \
         zip \
@@ -45,6 +46,10 @@ COPY . .
 #
 # Deliberately only --jobs: --local_ram_resources was REMOVED in Bazel 9, and
 # passing it fails the build outright rather than being ignored.
+#
+# The linker choice lives in .bazelrc under build:linux, so it applies to a
+# direct `bazel build` on Linux as well as to this image -- see the comment
+# there for why gold cannot be used on aarch64. lld is installed above for it.
 RUN --mount=type=cache,target=/root/.cache/bazel,sharing=locked \
     bazel build \
         --jobs=4 \

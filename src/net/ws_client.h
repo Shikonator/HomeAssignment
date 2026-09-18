@@ -61,10 +61,10 @@ class WsConnection : public std::enable_shared_from_this<WsConnection> {
   // are flushed in order once open.
   void Send(std::string payload);
 
-  // Sends `payload` only if nothing has been received for `idle`. Rearms
-  // itself. Called once after open; the timer is reset by every inbound frame,
-  // so on a live feed almost no keepalives are actually sent.
-  void StartKeepalive(std::string payload, std::chrono::seconds idle);
+  // Sends `payload` every `interval`, unconditionally. See
+  // VenueProtocol::keepalive_interval for why this is not conditioned on the
+  // connection being idle.
+  void StartKeepalive(std::string payload, std::chrono::seconds interval);
 
   void Close();
   bool open() const { return state_ == State::kOpen; }
@@ -129,7 +129,7 @@ class WsConnection : public std::enable_shared_from_this<WsConnection> {
   bool close_pending_ = false;
 
   std::string keepalive_payload_;
-  std::chrono::seconds keepalive_idle_{0};
+  std::chrono::seconds keepalive_interval_{0};
   std::chrono::steady_clock::time_point last_inbound_;
 };
 

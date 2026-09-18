@@ -1,190 +1,190 @@
 {
-  "captured_utc": "2026-09-17 20:50:07Z",
+  "captured_utc": "2026-09-18 19:01:40Z",
   "instrument": "BTCUSDT",
   "per_venue": {
     "binance": {
       "bids": {
         "levels": 5000,
-        "qty_e8": 35097046000,
-        "notional_e8": 2675621911086400,
-        "span_bps": 101.6
+        "qty_e8": 21419305000,
+        "notional_e8": 1727131808312050,
+        "span_bps": 106.3
       },
       "asks": {
         "levels": 5000,
-        "qty_e8": 29119912000,
-        "notional_e8": 2236728489869740,
-        "span_bps": 118.7
+        "qty_e8": 37437040000,
+        "notional_e8": 3040092346888440,
+        "span_bps": 95.9
       }
     },
     "okx": {
       "bids": {
         "levels": 400,
-        "qty_e8": 6007557038,
-        "notional_e8": 459406343372828,
-        "span_bps": 11.8
+        "qty_e8": 5445535455,
+        "notional_e8": 440303584133133,
+        "span_bps": 13.5
       },
       "asks": {
         "levels": 400,
-        "qty_e8": 8588111295,
-        "notional_e8": 658017941901423,
-        "span_bps": 30.2
+        "qty_e8": 6648595789,
+        "notional_e8": 538515261275647,
+        "span_bps": 29.1
       }
     },
     "bybit": {
       "bids": {
         "levels": 200,
-        "qty_e8": 3690191500,
-        "notional_e8": 282163513727790,
-        "span_bps": 16.3
+        "qty_e8": 2649958900,
+        "notional_e8": 214245571025570,
+        "span_bps": 16.8
       },
       "asks": {
         "levels": 200,
-        "qty_e8": 5301059600,
-        "notional_e8": 406008173426730,
-        "span_bps": 19.4
+        "qty_e8": 3559700500,
+        "notional_e8": 288324508107040,
+        "span_bps": 15.1
       }
     }
   },
   "consolidated": {
     "bids": {
-      "levels": 5452,
-      "touch_e8": 7652635000000,
-      "qty_e8": 44794794538,
-      "notional_e8": 3417191768187018,
-      "span_bps": 101.6,
+      "levels": 5478,
+      "touch_e8": 8091800000000,
+      "qty_e8": 29514799355,
+      "notional_e8": 2381680963470753,
+      "span_bps": 106.3,
       "volume_bands": [
         {
           "target_musd": 1,
           "fully_filled": true,
-          "worst_e8": 7650569000000,
-          "vwap_e8": 7651259570960
+          "worst_e8": 8090222000000,
+          "vwap_e8": 8090882846430
         },
         {
           "target_musd": 5,
           "fully_filled": true,
-          "worst_e8": 7648200000000,
-          "vwap_e8": 7649761298386
+          "worst_e8": 8086990000000,
+          "vwap_e8": 8088914693511
         },
         {
           "target_musd": 10,
           "fully_filled": true,
-          "worst_e8": 7645710000000,
-          "vwap_e8": 7648423448320
+          "worst_e8": 8083500000000,
+          "vwap_e8": 8086972622334
         },
         {
           "target_musd": 25,
-          "fully_filled": true,
-          "worst_e8": 7615000000000,
-          "vwap_e8": 7639439377271
+          "fully_filled": false,
+          "worst_e8": 8005815000000,
+          "vwap_e8": 8069446567548
         },
         {
           "target_musd": 50,
           "fully_filled": false,
-          "worst_e8": 7574879000000,
-          "vwap_e8": 7628546583215
+          "worst_e8": 8005815000000,
+          "vwap_e8": 8069446567548
         }
       ],
       "price_bands": [
         {
           "offset_bps": 50,
           "depth_limited": false,
-          "qty_e8": 34306229538,
-          "notional_e8": 2620416382569428
+          "qty_e8": 23671727355,
+          "notional_e8": 1912800287902373
         },
         {
           "offset_bps": 100,
           "depth_limited": false,
-          "qty_e8": 44706161538,
-          "notional_e8": 3410477649312678
+          "qty_e8": 29154404355,
+          "notional_e8": 2352814828474173
         },
         {
           "offset_bps": 200,
           "depth_limited": true,
-          "qty_e8": 44794794538,
-          "notional_e8": 3417191768187018
+          "qty_e8": 29514799355,
+          "notional_e8": 2381680963470753
         },
         {
           "offset_bps": 500,
           "depth_limited": true,
-          "qty_e8": 44794794538,
-          "notional_e8": 3417191768187018
+          "qty_e8": 29514799355,
+          "notional_e8": 2381680963470753
         },
         {
           "offset_bps": 1000,
           "depth_limited": true,
-          "qty_e8": 44794794538,
-          "notional_e8": 3417191768187018
+          "qty_e8": 29514799355,
+          "notional_e8": 2381680963470753
         }
       ]
     },
     "asks": {
-      "levels": 5517,
-      "touch_e8": 7652330000000,
-      "qty_e8": 43009082895,
-      "notional_e8": 3300754605197893,
-      "span_bps": 119.1,
+      "levels": 5524,
+      "touch_e8": 8091600000000,
+      "qty_e8": 47645336289,
+      "notional_e8": 3866932116271127,
+      "span_bps": 96.1,
       "volume_bands": [
         {
           "target_musd": 1,
           "fully_filled": true,
-          "worst_e8": 7653129000000,
-          "vwap_e8": 7652832060773
+          "worst_e8": 8091801000000,
+          "vwap_e8": 8091796425096
         },
         {
           "target_musd": 5,
           "fully_filled": true,
-          "worst_e8": 7655640000000,
-          "vwap_e8": 7654164920808
+          "worst_e8": 8095150000000,
+          "vwap_e8": 8093397704612
         },
         {
           "target_musd": 10,
           "fully_filled": true,
-          "worst_e8": 7658504000000,
-          "vwap_e8": 7655530038259
+          "worst_e8": 8097730000000,
+          "vwap_e8": 8094839100425
         },
         {
           "target_musd": 25,
           "fully_filled": true,
-          "worst_e8": 7681690000000,
-          "vwap_e8": 7661117932711
+          "worst_e8": 8123181000000,
+          "vwap_e8": 8100692102097
         },
         {
           "target_musd": 50,
           "fully_filled": false,
-          "worst_e8": 7743484000000,
-          "vwap_e8": 7674552403863
+          "worst_e8": 8169385000000,
+          "vwap_e8": 8116076865982
         }
       ],
       "price_bands": [
         {
           "offset_bps": 50,
           "depth_limited": false,
-          "qty_e8": 33268484895,
-          "notional_e8": 2548895613861233
+          "qty_e8": 34188885289,
+          "notional_e8": 2770387868416627
         },
         {
           "offset_bps": 100,
-          "depth_limited": false,
-          "qty_e8": 39789660895,
-          "notional_e8": 3051711128758953
+          "depth_limited": true,
+          "qty_e8": 47645336289,
+          "notional_e8": 3866932116271127
         },
         {
           "offset_bps": 200,
           "depth_limited": true,
-          "qty_e8": 43009082895,
-          "notional_e8": 3300754605197893
+          "qty_e8": 47645336289,
+          "notional_e8": 3866932116271127
         },
         {
           "offset_bps": 500,
           "depth_limited": true,
-          "qty_e8": 43009082895,
-          "notional_e8": 3300754605197893
+          "qty_e8": 47645336289,
+          "notional_e8": 3866932116271127
         },
         {
           "offset_bps": 1000,
           "depth_limited": true,
-          "qty_e8": 43009082895,
-          "notional_e8": 3300754605197893
+          "qty_e8": 47645336289,
+          "notional_e8": 3866932116271127
         }
       ]
     }

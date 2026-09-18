@@ -147,7 +147,7 @@ void VenueRunner::OnOpen() {
   for (const std::string& frame : protocol_->SubscribeFrames()) {
     connection_->Send(frame);
   }
-  connection_->StartKeepalive(protocol_->KeepaliveFrame(), protocol_->keepalive_idle());
+  connection_->StartKeepalive(protocol_->KeepaliveFrame(), protocol_->keepalive_interval());
 
   // The snapshot request is issued only AFTER the read loop is running, so
   // updates arriving during the round trip are already being buffered by the

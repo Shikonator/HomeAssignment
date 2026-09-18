@@ -35,11 +35,11 @@ class OkxProtocol final : public VenueProtocol {
   std::string stream_url() const override { return config_.stream_url; }
   std::vector<std::string> SubscribeFrames() const override;
 
-  // OKX closes a connection that has been silent for 30 seconds. The keepalive
-  // is a bare text frame containing "ping", not a websocket control ping, so
-  // the protocol-level keepalive would not satisfy it.
+  // OKX closes a connection silent for 30 seconds. The keepalive is a bare text
+  // frame containing "ping", not a websocket control ping, so the
+  // protocol-level keepalive would not satisfy it.
   std::string KeepaliveFrame() const override { return "ping"; }
-  std::chrono::seconds keepalive_idle() const override { return std::chrono::seconds(20); }
+  std::chrono::seconds keepalive_interval() const override { return std::chrono::seconds(20); }
 
   bool synced() const override { return synced_; }
   FrameVerdict OnFrame(std::string_view frame, std::int64_t recv_ts_ns,

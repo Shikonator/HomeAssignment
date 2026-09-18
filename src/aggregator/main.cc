@@ -67,6 +67,7 @@ int main(int argc, char** argv) {
         "  --bybit-ws=URL            override the Bybit stream endpoint\n"
         "  --snapshot-limit=N        Binance REST depth (default 5000)\n"
         "  --staleness-ms=N          exclude a venue silent this long (default 5000)\n"
+        "  --max-publish-bps=N       publish depth within N bps of the touch (default 500)\n"
         "  --ca-file=PATH            CA bundle; empty uses the system trust store\n"
         "  --record-dir=PATH         write raw frame recordings for replay tests\n");
     return 0;
@@ -76,7 +77,7 @@ int main(int argc, char** argv) {
   // silent default.
   flags.RequireKnown({"help", "listen", "instrument", "venues", "binance-ws", "binance-rest",
                       "okx-ws", "okx-symbol", "bybit-ws", "snapshot-limit", "staleness-ms",
-                      "ca-file", "record-dir"});
+                      "max-publish-bps", "ca-file", "record-dir"});
 
   const std::string listen = flags.Get("listen", "0.0.0.0:50051");
   const std::string instrument = flags.Get("instrument", "BTCUSDT");
@@ -145,6 +146,7 @@ int main(int argc, char** argv) {
 
   md::EngineConfig engine_config;
   engine_config.instrument = instrument;
+  engine_config.max_publish_bps = flags.GetInt("max-publish-bps", 500, 1, 100'000);
   engine_config.staleness_timeout =
       std::chrono::milliseconds(flags.GetInt("staleness-ms", 5000, 1, 86'400'000));
 

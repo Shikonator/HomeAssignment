@@ -58,7 +58,8 @@ suites do not — `test/conformance/recordings/*.jsonl` are captured live
 sessions committed on purpose, and they are what makes the replay suite
 hermetic and runnable offline.
 
-To run without Docker:
+To run without Docker (needs Bazel 9.2; on **Linux** it also needs `lld`, for
+the reason documented in `.bazelrc`):
 
 ```bash
 bazel build //...
@@ -89,55 +90,83 @@ publish, measured inside the aggregator.
 
 ## What you will see first, and why it is correct
 
-**The 50M volume band does not fill, and the 200/500/1000 bps price bands are
+**The 50M volume band does not fill, and the wider bps price bands are
 depth-limited.** Both are correct answers, not defects, and you will see them
 within seconds of starting the system.
 
-This is measured, not asserted. Reproduce the table below with one command:
+### The published ladder is bounded at 500 bps from the touch
+
+This matters before the numbers do, because it is what makes them mean anything.
+
+Venue books here are maintained from diff streams and are **never truncated
+internally** (see `src/core/book.h`). A REST snapshot returns the levels nearest
+the touch — about 100 bps of range on BTCUSDT — but the diff stream then
+delivers updates for levels far outside that window, and those accumulate for as
+long as the process stays connected. Measured: after 40 minutes a running
+aggregator held roughly **twice** the notional of a REST snapshot taken at the
+same instant, reaching 2,500 bps from the touch.
+
+Publishing that unbounded book would be wrong twice over:
+
+* **It is not reproducible.** Two aggregators started ten minutes apart hold
+  different books for the same market at the same instant. A consumer cannot
+  reason about a number that depends on our process uptime.
+* **It is not economically meaningful.** Unbounded, a 50M sweep does "fill" —
+  by running 800–2,500 bps through the book at several percent average
+  slippage. That is not a price anyone would trade at; it is deep resting dust
+  that happened to tick since we connected.
+
+So the published ladder covers a stated distance from the touch
+(`--max-publish-bps`, default 500). The internal books stay full-depth, because
+truncating them would break delta application; only what is published is
+bounded.
+
+### What that leaves
+
+Measured live, with the 500 bps bound in force:
+
+```
+BID   1.000M   vwap 81210.37  worst 81206.90  qty  12.31  filled  1.000M  levels   49
+BID   5.000M   vwap 81194.29  worst 81173.10  qty  61.58  filled  5.000M  levels  397
+BID  10.000M   vwap 81174.42  worst 81135.50  qty 123.19  filled 10.000M  levels  666
+BID  25.000M   vwap 81018.16  worst 80310.00  qty 308.57  filled 25.000M  levels 5336
+BID  50.000M   vwap 80993.61  worst 77310.02  qty 319.39  filled 25.869M  levels 5509
+BID  50.000M+  vwap 80993.61  worst 77310.02  qty 319.39  filled 25.869M  levels 5509
+```
+
+* 1M / 5M / 10M / 25M fill.
+* **50M does not** — there is roughly 26M of consolidated liquidity within 500
+  bps of the touch. `fully_filled=false` is the honest answer.
+* The trailing open-ended band (`50M+`, `1000bps+`) reports **all** liquidity
+  inside the bound, which is the meaningful response to "50M+" when 50M exceeds
+  what is there.
+* Wide bps bands report `depth_limited=true` when their bound lies outside the
+  published ladder.
+
+`depth_limited` discriminates rather than being permanently on: in one live
+sample the ask side's 1000 bps band was flagged while the bid side genuinely
+extended past its bound.
+
+### Independently measured
+
+`test/conformance/reference/depth_survey.md` measures **snapshot depth** — what
+a single REST call from each venue contains — and is regenerated with one
+command:
 
 ```bash
 python3 test/conformance/reference/measure_depth.py
 ```
 
-Across all three venues at maximum available depth
-(`test/conformance/reference/depth_survey.md`):
+Two captures a day apart agreed: the consolidated snapshot spans ~100 bps and
+holds tens of millions, not hundreds. That is a different quantity from the
+running book above, and the README is careful to say which is which — the
+running book is deeper, and the 500 bps bound is what makes the two comparable.
 
-| side | levels | BTC | notional | span |
-|---|---:|---:|---:|---:|
-| bids | 5452 | 447.95 | $34,171,917 | 101.6 bps |
-| asks | 5517 | 430.09 | $33,007,546 | 119.1 bps |
-
-The entire consolidated book is about **$33–34M per side and spans ~100 bps**.
-So:
-
-* 1M / 5M / 10M / 25M fill. 50M cannot — there is not that much liquidity
-  published. `fully_filled=false` is the honest answer and it is permanent, not
-  intermittent.
-* 50 and 100 bps lie inside the published ladder. 200, 500 and 1000 bps do not,
-  so they report `depth_limited=true`.
-* The trailing open-ended band (`50M+`, `1000bps+`) reports **all** available
-  liquidity, which is the meaningful response to "50M+" when 50M exceeds the
-  book.
-
-**This is not one measurement on one day.** The table above comes from a Python
-survey of the venues' REST endpoints; the running C++ system reproduces it
-independently, on a different day and at a different price — a live run with BTC
-at ~80,838 filled only **25.855M** of the 50M bid band, across 5511 levels.
-Two implementations, two market conditions, same conclusion.
-
-The direction of the price dependence is worth stating, because the sceptical
-reaction is "surely this depends on the price": it does, weakly, and in the
-helpful direction. A *higher* price makes a fixed dollar target easier in BTC
-terms — 50M needs 619 BTC at 80,838 against 653 BTC at 76,547 — and the
-consolidated book holds roughly 448 BTC on the bid. The gap is not close enough
-for ordinary price movement to close it.
-
-`depth_limited` discriminates rather than being permanently on. A live sample:
-the ask side's 1000 bps bound was 88852.78 against a worst published ask of
-86422.88, so it was flagged — while the bid side genuinely extended past its
-bound and was not.
-
----
+The price dependence runs in the helpful direction, which is worth stating
+because the instinctive objection is "surely this depends on the price": it
+does, weakly. A *higher* price makes a fixed dollar target easier in BTC terms —
+50M needs 619 BTC at 80,838 against 653 BTC at 76,547 — and the gap is not close
+enough for ordinary movement to close it.
 
 ## How this maps to the assessment criteria
 
@@ -212,12 +241,15 @@ carries `instrument` throughout, so scaling is one process per instrument, which
 is the standard shape for this kind of service and keeps a hot instrument from
 sharing a book thread with a quiet one.
 
-**Memory — the thing that would hurt first if depth grew.** `MergedLevel` is 48
-bytes (price, total quantity, and a 4-slot per-venue array). At ~5500 levels per
-side that is ~264 KB a side, so **~528 KB per published snapshot**, allocated
-fresh each time. At the measured ~25 publishes/s that is ~13 MB/s of allocation
-churn — irrelevant today, and the first number that would matter if venues began
-publishing materially deeper books.
+**Memory — bounded by the price limit, not by the venues.** `MergedLevel` is 48
+bytes (price, total quantity, and a 4-slot per-venue array). The published
+ladder is capped at 500 bps from the touch, which on BTCUSDT is ~5500 levels a
+side: ~264 KB a side, so **~528 KB per published snapshot**, allocated fresh
+each time. At the measured ~25 publishes/s that is ~13 MB/s of allocation churn,
+which is irrelevant.
+The bound is what stops this growing without limit. Internal books accumulate
+deep levels for as long as the process runs; publishing them unbounded would
+make snapshot size a function of uptime.
 
 ## Design decisions
 

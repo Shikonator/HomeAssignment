@@ -42,10 +42,15 @@ struct VenueFeed {
 struct EngineConfig {
   std::string instrument = "BTCUSDT";
 
-  // Backstop on published depth. The venue books are kept full-depth
-  // internally; this only bounds what goes on the wire. Sized to publish the
-  // whole merged ladder in practice -- roughly 5500 levels per side across the
-  // three venues, at 48 bytes each, is about 260KB.
+  // How far from the touch the published ladder extends, in bps. This is the
+  // bound that makes published numbers reproducible: see MergeLimits for why an
+  // unbounded ladder makes every derived figure depend on process uptime.
+  //
+  // 500 bps is generous for BTCUSDT, where a REST snapshot spans about 100.
+  int max_publish_bps = 500;
+
+  // Hard backstop on level count. The venue books are kept full-depth
+  // internally; this only bounds what goes on the wire.
   int max_publish_levels = 8192;
 
   // A venue silent for longer than this is excluded from the merge. Measured on

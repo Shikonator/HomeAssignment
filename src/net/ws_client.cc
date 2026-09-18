@@ -185,16 +185,16 @@ void WsConnection::OnWrite(beast::error_code ec, std::size_t /*bytes*/) {
   if (!write_queue_.empty()) DoWrite();
 }
 
-void WsConnection::StartKeepalive(std::string payload, std::chrono::seconds idle) {
-  if (payload.empty() || idle.count() <= 0) return;
+void WsConnection::StartKeepalive(std::string payload, std::chrono::seconds interval) {
+  if (payload.empty() || interval.count() <= 0) return;
   keepalive_payload_ = std::move(payload);
-  keepalive_idle_ = idle;
+  keepalive_interval_ = interval;
   ArmKeepalive();
 }
 
 void WsConnection::ArmKeepalive() {
   if (state_ != State::kOpen && state_ != State::kConnecting) return;
-  keepalive_timer_.expires_after(keepalive_idle_);
+  keepalive_timer_.expires_after(keepalive_interval_);
   keepalive_timer_.async_wait(
       [self = shared_from_this()](beast::error_code ec) { self->OnKeepalive(ec); });
 }
@@ -206,12 +206,11 @@ void WsConnection::OnKeepalive(beast::error_code ec) {
     ArmKeepalive();
     return;
   }
-  // Only speak if the venue has actually gone quiet. Inbound book updates are
-  // traffic, so on a live feed this almost never sends anything -- which is
-  // both cheaper and closer to what the venues' own rules ask for ("no data for
-  // N seconds closes the connection").
-  const auto silent_for = std::chrono::steady_clock::now() - last_inbound_;
-  if (silent_for >= keepalive_idle_) Send(keepalive_payload_);
+  // Sent unconditionally rather than only when idle: Bybit asks for a client
+  // ping every 20 seconds and appears to want it whether or not data is
+  // flowing, so an idle-gated ping never fires on a busy feed and the venue
+  // eventually drops us.
+  Send(keepalive_payload_);
   ArmKeepalive();
 }
 

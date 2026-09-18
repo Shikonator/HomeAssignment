@@ -31,7 +31,7 @@ class BybitProtocol final : public VenueProtocol {
   std::vector<std::string> SubscribeFrames() const override;
 
   std::string KeepaliveFrame() const override { return "{\"op\":\"ping\"}"; }
-  std::chrono::seconds keepalive_idle() const override { return std::chrono::seconds(20); }
+  std::chrono::seconds keepalive_interval() const override { return std::chrono::seconds(20); }
 
   bool synced() const override { return synced_; }
   FrameVerdict OnFrame(std::string_view frame, std::int64_t recv_ts_ns,

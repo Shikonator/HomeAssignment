@@ -79,9 +79,19 @@ class VenueProtocol {
   // containing "ping" and Bybit requires {"op":"ping"}; a protocol-level ping
   // satisfies neither, so Beast's built-in keepalive cannot be relied on here.
   virtual std::string KeepaliveFrame() const { return {}; }
-  // Send a keepalive only after this much silence. Inbound book updates count
-  // as traffic, so on a live feed almost no keepalives are actually sent.
-  virtual std::chrono::seconds keepalive_idle() const { return std::chrono::seconds(0); }
+  // Keepalive cadence. Sent on a FIXED interval, not only after silence.
+  //
+  // Idle-based keepalives were the original design and they are wrong for at
+  // least one venue: OKX's rule is "no data for 30s closes the connection",
+  // which inbound updates satisfy, but Bybit documents a client ping every 20
+  // seconds and appears to expect it regardless of inbound traffic. On a busy
+  // BTCUSDT feed an idle-based ping therefore never fires, and Bybit eventually
+  // drops the connection -- which is what a containerised run showed, with
+  // repeated "socket closed due to a timeout" on Bybit and OKX.
+  //
+  // Sending a ping every 20s unconditionally costs one small frame and
+  // satisfies both venues' documented requirements.
+  virtual std::chrono::seconds keepalive_interval() const { return std::chrono::seconds(0); }
 
   // Binance seeds its book from REST; the others snapshot over the websocket.
   virtual bool needs_rest_snapshot() const { return false; }

@@ -148,6 +148,7 @@ void Engine::Publish() {
 
   MergeLimits limits;
   limits.max_levels = config_.max_publish_levels;
+  limits.max_bps_from_touch_e8 = static_cast<std::int64_t>(config_.max_publish_bps) * kScale;
   book->bids_truncated = MergeSide(true, bid_inputs, limits, &book->bids);
   book->asks_truncated = MergeSide(false, ask_inputs, limits, &book->asks);
 

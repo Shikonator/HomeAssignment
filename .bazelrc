@@ -12,6 +12,31 @@ build:macos --cxxopt=-Wno-deprecated-declarations
 
 build:linux --cxxopt=-Wno-deprecated-declarations
 
+# Linker selection on Linux, and it is a correctness fix rather than a
+# preference.
+#
+# Bazel's default Linux toolchain selects GNU gold when it is installed. On
+# aarch64, gold crashes linking binaries this size:
+#     ld.gold: internal error in try_fix_erratum_843419_optimized,
+#              at ../../gold/aarch64.cc:2115
+# It fires at the LINK step, so it wastes the entire compile first, and it is
+# arm64-only -- so an x86_64 machine never sees it and every Apple Silicon or
+# Graviton one does.
+#
+# The irony is worth knowing: erratum 843419 is a workaround for the Cortex-A53,
+# a low-power core from 2012. Nothing this runs on is a Cortex-A53, so gold is
+# crashing inside a workaround that is pure overhead here. gold can also be told
+# to skip it (--no-fix-cortex-a53-843419), but lld is faster on large C++ links
+# and actively maintained, so switching linkers is the better answer.
+#
+# If lld is not installed, the error names a missing package instead of crashing
+# 40 minutes in -- and -fuse-ld=bfd needs no package at all, since binutils bfd
+# ships with build-essential and does not have this bug.
+#
+# Scoped to Linux deliberately: macOS drives Apple's ld64, never selects gold,
+# and has no lld by default.
+build:linux --linkopt=-fuse-ld=lld
+
 # THE SINGLE MOST IMPORTANT FLAG IN THIS FILE.
 #
 # grpc links BoringSSL. Boost.Asio's TLS support defaults to OpenSSL. Both

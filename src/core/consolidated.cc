@@ -24,6 +24,8 @@ bool MergeSide(bool descending, std::span<const VenueSideInput> inputs,
 
   Wide cumulative_notional = 0;
   bool truncated = false;
+  // Set from the first level found; the touch is not known until then.
+  Px bound = 0;
 
   while (true) {
     // Pick the best price among the cursor heads.
@@ -43,6 +45,20 @@ bool MergeSide(bool descending, std::span<const VenueSideInput> inputs,
     if (out->size() >= static_cast<std::size_t>(limits.max_levels)) {
       truncated = true;
       break;
+    }
+
+    if (limits.max_bps_from_touch_e8 > 0) {
+      if (bound == 0) {
+        bound = OffsetByBpsOutward(best, limits.max_bps_from_touch_e8, descending);
+      }
+      const bool inside = descending ? (best >= bound) : (best <= bound);
+      if (!inside) {
+        // Everything further out is worse, so the walk is finished rather than
+        // merely interrupted -- but the ladder IS truncated with respect to the
+        // underlying books, which is what the flag reports.
+        truncated = true;
+        break;
+      }
     }
 
     // Consume every venue sitting at that price.

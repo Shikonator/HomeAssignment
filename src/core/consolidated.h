@@ -98,12 +98,31 @@ struct ConsolidatedBook {
 
 // How deep to publish.
 //
-// Derived, not chosen: deep enough that the largest requested notional band can
-// be satisfied even when only the thinnest single venue is contributing, so
-// that a filtered or degraded view still fills its bands. `max_levels` is a
-// hard backstop against a pathological book.
+// The PRICE bound is the important one, and it exists for a correctness reason
+// rather than a bandwidth one.
+//
+// Venue books are maintained from diff streams and are never truncated
+// internally (see book.h). A REST snapshot returns the levels nearest the
+// touch -- about 100 bps of range on BTCUSDT -- but the diff stream then
+// delivers updates for levels far outside that window, which accumulate for as
+// long as the process stays connected. Two aggregators started ten minutes
+// apart therefore hold different books for the same market at the same instant,
+// and the accumulated deep region is a biased subset: it contains levels that
+// happened to tick since we connected and omits levels that never changed.
+//
+// Publishing that unbounded book makes every derived number depend on our
+// uptime, which a consumer cannot reason about. It also makes them
+// economically meaningless: a 50M sweep "fills" only by running 800-2500 bps
+// through the book, at an average slippage of several percent, which is not a
+// price anyone would trade at.
+//
+// Bounding by price fixes both. The published ladder covers a stated distance
+// from the touch, so it is reproducible regardless of uptime and describes
+// liquidity someone would actually cross.
 struct MergeLimits {
   Wide notional_target_e8 = 0;
+  // Maximum distance from the touch, in bps scaled 1e8. 0 means unbounded.
+  std::int64_t max_bps_from_touch_e8 = 0;
   int max_levels = 4096;
 };
 
