@@ -73,7 +73,13 @@ inline void FillSubscription(const ClientOptions& options, v1::Subscription* sub
 inline std::shared_ptr<grpc::Channel> Connect(const std::string& server) {
   auto channel = grpc::CreateChannel(server, grpc::InsecureChannelCredentials());
   std::fprintf(stderr, "connecting to %s...\n", server.c_str());
-  channel->WaitForConnected(std::chrono::system_clock::now() + std::chrono::seconds(120));
+  if (!channel->WaitForConnected(std::chrono::system_clock::now() +
+                                 std::chrono::seconds(120))) {
+    // Report the real problem here rather than letting the first RPC surface a
+    // generic status code two minutes later. "The server never came up" and
+    // "the server rejected the call" deserve different messages.
+    std::fprintf(stderr, "%s did not become reachable within 120s\n", server.c_str());
+  }
   return channel;
 }
 
@@ -81,15 +87,30 @@ inline void PrintJson(const google::protobuf::Message& message) {
   std::string out;
   google::protobuf::util::JsonPrintOptions print_options;
   print_options.always_print_fields_with_no_presence = true;
-  if (google::protobuf::util::MessageToJsonString(message, &out, print_options).ok()) {
+  const absl::Status status =
+      google::protobuf::util::MessageToJsonString(message, &out, print_options);
+  if (status.ok()) {
     std::printf("%s\n", out.c_str());
+    return;
   }
+  // --json exists so a script can consume this stream. Emitting nothing and
+  // saying nothing is the worst available failure for that: the consumer sees
+  // an empty pipe with no reason.
+  std::fprintf(stderr, "failed to serialise update as JSON: %s\n",
+               std::string(status.message()).c_str());
 }
 
 // Fixed-width so a stream of these reads as a table rather than ragged text.
 inline std::string FmtPx(std::int64_t value) { return FormatFixed(value, 2); }
 inline std::string FmtQty(std::int64_t value) { return FormatFixed(value, 8); }
 
+// Millions() and Bps() convert to double for DISPLAY ONLY, and the result is
+// never read back into arithmetic. The no-floating-point rule this codebase
+// follows is about book state and about products of scaled values, where double
+// is both inexact and overflow-prone; formatting a single already-computed
+// value at two decimal places is neither. BpsLabel below stays on the
+// fixed-point path because its output is a band label that must match the
+// specification exactly.
 inline std::string Millions(std::int64_t notional_e8) {
   const double millions = static_cast<double>(notional_e8) / static_cast<double>(kScale) / 1e6;
   char buffer[32];
