@@ -1,22 +1,12 @@
 """Independent reference implementation of the consolidated-book analytics.
 
-Written from the assignment specification and the comments in
-proto/md/v1/market_data.proto, deliberately WITHOUT reading the C++
-implementation it is used to check. Golden fixtures generated here are
-asserted against the production code by the conformance tests; two
-independent implementations agreeing on hand-checkable numbers is the
-evidence, so this file must never be "fixed" to match the C++.
+Written from the specification and market_data.proto, deliberately WITHOUT
+reading the C++ it checks. Never "fix" this file to match the C++ -- a
+disagreement means one of them is wrong and which has to be established.
 
-Python integers are arbitrary precision, which is the point: the reference
-cannot silently overflow the way a naive int64 implementation does, so a
-fixture that overflows int64 in intermediate arithmetic still gets a correct
-expected value here.
-
-Conventions mirror the proto:
-  * every *_e8 value is fixed point scaled by 1e8
-  * notional is quote currency (USDT), sum(price * qty)
-  * bands are cumulative from the touch
-  * all divisions truncate toward zero
+Python's arbitrary-precision integers are the point: this cannot overflow
+where a naive int64 does, so it still yields the correct expected value for
+cases that break the code under test.
 """
 
 from dataclasses import dataclass, field

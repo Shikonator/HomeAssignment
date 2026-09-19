@@ -11,89 +11,53 @@
 
 namespace md {
 
-// One book change set from one venue.
-//
-// Inherits the level-carrying part from core so that ApplyFeedUpdate -- the
-// single implementation of "fold an update into a book" -- works on both the
-// live path and the offline replay test.
+// One book change set from one venue. Inherits the level-carrying part from
+// core so ApplyFeedUpdate works on both the live path and the replay test.
 struct FeedUpdate : FeedUpdateLevels {
-  // The venue's own clock. Reproduced for information; never used for ordering
-  // or staleness, because it is not our clock and we cannot bound its skew.
+  // The venue's clock: informational only, never trusted for ordering.
   std::int64_t exchange_ts_ns = 0;
-  // Local monotonic receive time. This is what staleness decisions use.
+  // Local monotonic receive time. All staleness decisions use this.
   std::int64_t recv_ts_ns = 0;
 };
 
-// CONTRACT FOR EVERY VERDICT OTHER THAN kOk:
-//   1. `out` is UNSPECIFIED and the caller must discard whatever is in it. The
-//      adapters also enforce this structurally, by staging into a local buffer
-//      and appending to `out` only on the success path -- a contract that is
-//      only documented gets violated by the next edit.
-//   2. The caller MUST call Reset() before feeding another frame. A stateful
-//      failure (an overflowed buffer, a broken sequence) is still present
-//      afterwards, so feeding the next frame without resetting returns the same
-//      failure forever.
+// On any verdict except kOk: `out` is unspecified and the caller must discard
+// it, and the caller must Reset() before the next frame. The adapters also
+// stage internally so a partial batch never escapes.
 enum class FrameVerdict {
-  // Frame consumed. Zero or more updates were appended.
-  kOk,
-  // Sequencing broke, or the venue told us to start over. The book must be
-  // discarded and rebuilt from a fresh snapshot; applying anything further
-  // would silently diverge.
-  kNeedsResync,
-  // Malformed payload. Treated like kNeedsResync by the runner but counted
-  // separately, because a parse error is our bug and a gap is the network's.
-  kParseError,
-  // Permanently broken: an unknown symbol, a delisted instrument, a channel
-  // requiring auth. Reconnecting cannot fix it, so the runner marks the venue
-  // down and stops rather than looping forever while presenting as a network
-  // problem. The venue's own error text is surfaced in GetVenueStatus.
-  kFatal,
+  kOk,           // consumed; zero or more updates appended
+  kNeedsResync,  // sequencing broke; rebuild the book from a fresh snapshot
+  kParseError,   // malformed payload; counted separately, handled as a resync
+  kFatal,        // permanently broken. Reconnecting cannot fix it.
 };
 
 // Pure protocol logic for one venue: bytes in, book updates out.
 //
-// Deliberately contains no sockets, no threads and no clock. Everything that
-// makes a venue hard -- sequence validation, snapshot reconciliation, resync
-// triggers -- lives here and is therefore testable by feeding it recorded
-// frames with no network involved. The runner owns all I/O and knows nothing
-// about any venue's wire format.
+// No sockets, no threads, no clock. Sequence validation, snapshot
+// reconciliation and resync triggers all live here, so all of it is testable
+// from recorded frames with no network. The runner owns every bit of I/O.
 class VenueProtocol {
  public:
   virtual ~VenueProtocol() = default;
 
   virtual std::string_view name() const = 0;
-  // The venue's own spelling of the instrument (BTC-USDT on OKX, BTCUSDT
-  // elsewhere), surfaced so status output is auditable against the venue.
+  // The venue's own spelling (BTC-USDT on OKX, BTCUSDT elsewhere).
   virtual std::string venue_symbol() const = 0;
-
-  // Overridable so the end-to-end suite and docker-compose can point the same
-  // code at a local mock instead of the public endpoint.
+  // Overridable so tests and compose can point at a local mock.
   virtual std::string stream_url() const = 0;
-
   // Sent immediately after the websocket handshake.
   virtual std::vector<std::string> SubscribeFrames() const = 0;
 
-  // Application-level keepalive. Empty means the venue needs none.
-  //
-  // These are NOT websocket control pings. OKX requires a text frame
-  // containing "ping" and Bybit requires {"op":"ping"}; a protocol-level ping
-  // satisfies neither, so Beast's built-in keepalive cannot be relied on here.
+  // Application-level keepalive; empty means none. NOT a websocket control
+  // ping -- OKX wants the text "ping", Bybit wants {"op":"ping"}, and Beast's
+  // built-in keepalive satisfies neither.
   virtual std::string KeepaliveFrame() const { return {}; }
-  // Keepalive cadence. Sent on a FIXED interval, not only after silence.
-  //
-  // Idle-based keepalives were the original design and they are wrong for at
-  // least one venue: OKX's rule is "no data for 30s closes the connection",
-  // which inbound updates satisfy, but Bybit documents a client ping every 20
-  // seconds and appears to expect it regardless of inbound traffic. On a busy
-  // BTCUSDT feed an idle-based ping therefore never fires, and Bybit eventually
-  // drops the connection -- which is what a containerised run showed, with
-  // repeated "socket closed due to a timeout" on Bybit and OKX.
-  //
-  // Sending a ping every 20s unconditionally costs one small frame and
-  // satisfies both venues' documented requirements.
+  // Keepalive cadence, sent on a FIXED interval rather than only after silence.
+  // Bybit wants a client ping every 20s whether or not data is flowing, so an
+  // idle-gated ping never fires on a busy feed and the venue drops us. Do not
+  // "optimise" this back to idle-based.
   virtual std::chrono::seconds keepalive_interval() const { return std::chrono::seconds(0); }
 
-  // Binance seeds its book from REST; the others snapshot over the websocket.
+  // Binance seeds from REST; the others snapshot over the websocket.
   virtual bool needs_rest_snapshot() const { return false; }
   virtual std::string RestSnapshotUrl() const { return {}; }
   virtual FrameVerdict OnRestSnapshot(std::string_view body, std::int64_t recv_ts_ns,
@@ -111,8 +75,7 @@ class VenueProtocol {
   virtual FrameVerdict OnFrame(std::string_view frame, std::int64_t recv_ts_ns,
                                std::vector<FeedUpdate>* out) = 0;
 
-  // Discards all sequencing state ahead of a fresh subscribe. Required after
-  // any verdict other than kOk; see the contract above.
+  // Discards all sequencing state. Required after any verdict except kOk.
   virtual void Reset() = 0;
 
   // Human-readable reason a venue went kFatal, for GetVenueStatus.

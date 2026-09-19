@@ -1,29 +1,18 @@
 // Venue conformance, in two halves.
 //
-// REPLAY: real recorded sessions, replayed through the production adapters,
-// must reproduce books computed independently.
+// REPLAY: real recorded sessions replayed through the production adapters must
+// reproduce books computed independently.
 //
-// SCENARIOS: hand-built frame sequences for the unhealthy paths a healthy
-// recording cannot contain -- sequence gaps, no-change heartbeats, mid-stream
-// snapshots, rejected subscriptions. Replay proves the adapters agree with a
-// venue behaving well; only constructed frames prove they react correctly when
-// it does not, and those paths are what stand between a lost message and a
-// permanently wrong book.
+// SCENARIOS: hand-built frames for the unhealthy paths a healthy recording
+// cannot contain -- gaps, no-change heartbeats, mid-stream snapshots, rejected
+// subscriptions.
 //
-// This is the project's only DIVERGENCE control. Sequence continuity detects
-// LOSS; it cannot detect a stream that is perfectly sequenced and applied
-// wrongly. The OKX checksum would have covered that for one venue and was
-// deliberately dropped (it is computed over the feed's own decimal strings,
-// which cannot survive normalising to int64 at ingest). This test replaces it,
-// offline and for every venue that has a recording.
-//
-// Three things make it evidence rather than a restatement:
-//   * the recording came off the live venue, captured by an independent client
-//     (reference/capture.py), not by the aggregator's own recorder -- if the
-//     same code captured and replayed, a systematic capture bug would cancel
-//   * the seeding snapshot is the venue's own REST depth response
-//   * the expected final book comes from reference/gen_replay_golden.py, an
-//     independent implementation of Binance's documented reconciliation rules
+// Together these are the project's divergence control, replacing the OKX
+// checksum. Continuity detects LOSS; only replay detects a stream that is
+// correctly sequenced and applied WRONGLY. It is not circular: the recordings
+// were captured by an independent client (reference/capture.py), the seeding
+// snapshot is the venue's own, and the expected books come from an independent
+// implementation of each venue's rules.
 
 #include <algorithm>
 #include <cstdint>
@@ -87,10 +76,8 @@ std::vector<Entry> LoadRecording(const std::string& name) {
   return entries;
 }
 
-// The production function, not a copy of it. Engine::Apply calls this same
-// ApplyFeedUpdate, so replay drives the real path: if the application rules
-// ever grow a case, this test follows automatically instead of silently
-// validating something the aggregator no longer does.
+// Engine::Apply calls this same function, so replay drives the real path
+// rather than a copy that could drift.
 void ApplyToBook(VenueBook* book, FeedUpdate* update) { ApplyFeedUpdate(book, update); }
 
 void CompareSide(std::span<const Level> got, simdjson::dom::element want, const char* side) {

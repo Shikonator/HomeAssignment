@@ -11,19 +11,10 @@
 
 namespace md {
 
-// Thin wrapper over simdjson's DOM parser, reused across frames so the tape
-// buffer is allocated once.
-//
-// DOM rather than On-Demand deliberately. On-Demand is faster because it never
-// materialises a tape, but it is forward-only: fields must be visited in
-// document order and every value is invalidated when the buffer is reused.
-// Exchange payloads differ in field order between venues and between message
-// types on one venue, so On-Demand would mean either fragile ordering
-// assumptions or repeated restarts. At the 30-60 frames per second these feeds
-// actually produce, tape construction on a few-kilobyte frame is nanoseconds
-// against a 100ms publication cadence -- it is not where latency lives, and
-// buying speed here with a correctness hazard would be a bad trade. The
-// benchmark in tools/bench measures it rather than assuming.
+// simdjson DOM parser, reused across frames. DOM rather than On-Demand
+// deliberately: On-Demand is forward-only and field order differs between
+// venues, and at a few kilobytes per frame the tape costs nanoseconds against a
+// 100ms cadence. Not where latency lives.
 class JsonParser {
  public:
   bool Parse(std::string_view frame, simdjson::dom::element* out) {
@@ -37,14 +28,8 @@ class JsonParser {
   simdjson::dom::parser parser_;
 };
 
-// Every accessor below takes simdjson_result rather than element.
-//
-// That is not a style choice: simdjson_result's implicit conversion to element
-// THROWS when the lookup failed, so `Get(root["maybe_absent"])` on a plain
-// element parameter aborts on any frame missing the field -- which is every
-// subscription acknowledgement on every venue. Taking the result type forces
-// the error check. A plain element converts implicitly the other way, so
-// iterating an array still works unchanged.
+// Accessors take simdjson_result, not element: the implicit conversion THROWS
+// when the lookup failed, which is every subscription ack on every venue.
 using JsonValue = simdjson::simdjson_result<simdjson::dom::element>;
 
 // Reads a fixed-point value from a JSON string ("68123.45"), which is how all
@@ -64,9 +49,8 @@ inline bool GetFixed(simdjson::dom::element element, std::int64_t* out) {
   return false;
 }
 
-// Parses the [["68123.45","0.5"], ...] shape that all three venues use for
-// depth. Any malformed entry fails the whole frame rather than yielding a
-// partially-applied update, which would desync the book silently.
+// Parses [["68123.45","0.5"], ...]. Any malformed entry fails the whole frame;
+// a partially-applied update would desync the book silently.
 inline bool ParseLevelArray(JsonValue value, std::vector<Level>* out) {
   simdjson::dom::array array;
   if (value.get_array().get(array) != simdjson::SUCCESS) return false;
@@ -82,17 +66,10 @@ inline bool ParseLevelArray(JsonValue value, std::vector<Level>* out) {
       ++index;
     }
     if (index < 2) return false;
-    // A non-positive price is rejected HERE, at the only point where untrusted
-    // bytes become book state, because zero is the sentinel for "no liquidity"
-    // everywhere downstream: Quote.price_e8 == 0 on the wire, and
-    // ComputeSideBands treats a zero reference as an empty side. An ask priced
-    // at 0 would sort to the front (asks order ascending), become the best ask,
-    // and make a fully-populated side report as empty with no error anywhere. A
-    // negative price is worse -- it passes the empty check and becomes the
-    // touch that every band and bps bound is computed from.
-    //
-    // A quantity of zero is legitimate and means "remove this level"; a
-    // negative one is not.
+    // Rejected here, where untrusted bytes become book state: zero is the
+    // "no liquidity" sentinel downstream, so a zero-priced ask would sort to
+    // the front and make a full side report as empty. Zero QUANTITY is
+    // legitimate and means "remove this level".
     if (px <= 0 || qty < 0) return false;
     out->push_back(Level{px, qty});
   }
@@ -125,16 +102,11 @@ inline bool GetI64(JsonValue value, std::int64_t* out) {
     const char c = text[index];
     if (c < '0' || c > '9') return false;
     const int digit = c - '0';
-    // Guarded because this parses VENUE-SUPPLIED strings: several venues
-    // publish sequence numbers and timestamps as text, which is the only reason
-    // this path exists. Signed overflow is undefined behaviour, and we build
-    // -c opt -- a wrapped sequence number that happened to equal
-    // last_seq_id + 1 would walk a corrupt frame straight through continuity
-    // validation, which nothing downstream would catch.
+    // Guarded: this parses venue-supplied strings, and a wrapped sequence
+    // number could walk a corrupt frame through continuity validation.
     if (parsed > (INT64_MAX - digit) / 10) {
-      // INT64_MIN's magnitude exceeds INT64_MAX, so it would fail the guard
-      // above on its final digit despite being representable. Accept exactly
-      // that one value rather than silently rejecting a legitimate number.
+      // INT64_MIN's magnitude exceeds INT64_MAX, so it fails the guard above
+      // despite being representable. Accept exactly that one value.
       if (negative && index + 1 == text.size() && parsed == INT64_MAX / 10 &&
           digit == 8 && (INT64_MAX % 10) == 7) {
         *out = INT64_MIN;

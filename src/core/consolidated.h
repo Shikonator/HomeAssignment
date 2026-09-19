@@ -12,14 +12,10 @@
 
 namespace md {
 
-// Compile-time venue capacity.
-//
-// Sized at 4 rather than the 3 venues actually configured so one more can be
-// added without changing the published ladder's layout. It is not larger
-// because every slot costs 8 bytes on every published level and the band walk
-// is a linear scan over these arrays. Raising it is a one-constant change; the
-// aggregator refuses to start if more venues are configured than there are
-// slots, rather than silently dropping one.
+// Compile-time venue capacity. 4 rather than 3 so one more fits without
+// changing the published layout; not larger because every slot costs 8 bytes on
+// every level. Raising it is a one-constant change and the aggregator refuses
+// to start if it is exceeded.
 inline constexpr int kMaxVenues = 4;
 
 using VenueMask = std::uint32_t;
@@ -28,12 +24,9 @@ inline constexpr VenueMask MaskOf(int venue_index) {
   return VenueMask{1} << venue_index;
 }
 
-// One price level of the consolidated ladder, carrying which venue supplied
-// what.
-//
-// The per-venue array is not overhead paid for the optional venue filter: it is
-// required by staleness exclusion, which is the identical operation ("re-derive
-// the ladder including only these venues"). Having it, the filter is free.
+// One consolidated price level, carrying which venue supplied what. The
+// per-venue array is not overhead for the optional venue filter -- staleness
+// exclusion is the identical operation, so the filter is free.
 struct MergedLevel {
   Px px = 0;
   Qty qty = 0;  // sum over the venues that contributed to this ladder
@@ -54,9 +47,8 @@ struct VenueClockInfo {
   std::int64_t last_exchange_ts_ns = 0;
 };
 
-// An immutable consolidated state. Produced once per publish by the aggregator
-// thread and shared by every subscriber; subscribers derive their own bands
-// from it and never mutate it.
+// Immutable consolidated state, produced once per publish and shared by every
+// subscriber, which derive their own bands from it.
 struct ConsolidatedBook {
   std::uint64_t sequence = 0;
   std::int64_t publish_ts_ns = 0;
@@ -96,29 +88,12 @@ struct ConsolidatedBook {
   }
 };
 
-// How deep to publish.
-//
-// The PRICE bound is the important one, and it exists for a correctness reason
-// rather than a bandwidth one.
-//
-// Venue books are maintained from diff streams and are never truncated
-// internally (see book.h). A REST snapshot returns the levels nearest the
-// touch -- about 100 bps of range on BTCUSDT -- but the diff stream then
-// delivers updates for levels far outside that window, which accumulate for as
-// long as the process stays connected. Two aggregators started ten minutes
-// apart therefore hold different books for the same market at the same instant,
-// and the accumulated deep region is a biased subset: it contains levels that
-// happened to tick since we connected and omits levels that never changed.
-//
-// Publishing that unbounded book makes every derived number depend on our
-// uptime, which a consumer cannot reason about. It also makes them
-// economically meaningless: a 50M sweep "fills" only by running 800-2500 bps
-// through the book, at an average slippage of several percent, which is not a
-// price anyone would trade at.
-//
-// Bounding by price fixes both. The published ladder covers a stated distance
-// from the touch, so it is reproducible regardless of uptime and describes
-// liquidity someone would actually cross.
+// How deep to publish. The PRICE bound is a correctness fix, not a bandwidth
+// one: venue books are never truncated internally (see book.h), so the diff
+// stream accumulates levels far outside any snapshot for as long as the process
+// runs. Publishing that makes every derived number depend on our uptime, and
+// makes a 50M sweep "fill" only by running 800-2500 bps out at several percent
+// slippage. Bounding by price makes the answer reproducible and meaningful.
 struct MergeLimits {
   Wide notional_target_e8 = 0;
   // Maximum distance from the touch, in bps scaled 1e8. 0 means unbounded.
@@ -132,12 +107,9 @@ struct VenueSideInput {
   std::span<const Level> levels;
 };
 
-// k-way merge of per-venue side books into a single ladder, best price first.
-//
-// With a handful of venues a linear scan over the cursor heads beats a heap:
-// no branch-misprediction-heavy sift, and the whole cursor array lives in one
-// cache line. Returns true when the walk stopped early because the limits were
-// reached (i.e. the ladder is truncated).
+// k-way merge into one ladder, best price first. A linear scan over cursor
+// heads beats a heap at this venue count. Returns true if the ladder was
+// truncated by the limits.
 bool MergeSide(bool descending, std::span<const VenueSideInput> inputs,
                const MergeLimits& limits, std::vector<MergedLevel>* out);
 

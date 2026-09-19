@@ -1,9 +1,9 @@
-// Conformance: the production analytics against goldens from an independent
-// Python reference (test/conformance/reference/), written from the assignment
-// specification and market_data.proto rather than from this C++.
+// The production analytics against goldens from an independent Python
+// reference, written from the specification and market_data.proto rather than
+// from this C++.
 //
-// A disagreement here means one of the two implementations is wrong and which
-// one has to be established. Do not "fix" a golden to match the code.
+// A disagreement means one of the two is wrong and which has to be established.
+// Do not "fix" a golden to match the code.
 
 #include <string>
 #include <vector>
@@ -181,11 +181,9 @@ INSTANTIATE_TEST_SUITE_P(Fixtures, ConformanceTest,
                            return info.param;
                          });
 
-// Randomised differential corpus. The hand-built fixtures pin the scenarios we
-// reasoned about; this covers the ones we did not, and in particular places
-// notional targets exactly on cumulative level boundaries -- where a band
-// completes precisely as a level is exhausted, which is the case a single-pass
-// walk is most likely to get subtly wrong.
+// Randomised corpus. Places notional targets exactly on cumulative level
+// boundaries -- the case a single-pass walk is most likely to get wrong, and
+// the one hand-built fixtures never happen to hit.
 TEST(RandomCorpus, MatchesIndependentReference) {
   simdjson::dom::parser parser;
   auto result = parser.load(CorpusPath("random_books_corpus").string());
