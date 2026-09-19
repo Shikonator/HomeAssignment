@@ -286,10 +286,21 @@ published=38154  latency p50=203us  uptime=28975s
   bybit    LIVE  msgs=108613  resync=0  gaps=0  overflow=0
 ```
 
-178,831 venue messages, 38,154 publishes, **87 disconnects, one sequence gap** —
-detected and resynced correctly. All three venues finished LIVE. 39 of the
-disconnects came in multi-venue clusters (the host VM losing network overnight);
-the rest were venue-initiated. Every one recovered automatically.
+178,831 venue messages, 38,154 publishes, all three venues finishing LIVE.
+
+**`binance resync=1 gaps=1` is the most important line here.** A real sequence
+gap occurred against a live venue, was detected, and the book was rebuilt
+correctly — through the real socket, the real runner, the real resync rate
+limiter and the real REST reconciliation. No test can produce that: a test feeds
+a constructed gap through the protocol in isolation. Sequencing is the hardest
+part of this system and the OKX checksum was deliberately dropped, so evidence
+that the gap path works end to end against a live feed matters more than any
+other single measurement here.
+
+**87 disconnects, every one recovered automatically.** 39 came in multi-venue
+clusters within seconds of each other — the host VM losing network overnight,
+not anything per-venue — and the rest were venue-initiated closes, which these
+exchanges do routinely.
 
 ## Configuration
 
