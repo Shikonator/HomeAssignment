@@ -90,9 +90,11 @@ publish, measured inside the aggregator.
 
 ## What you will see first, and why it is correct
 
-**The 50M volume band does not fill, and the wider bps price bands are
-depth-limited.** Both are correct answers, not defects, and you will see them
-within seconds of starting the system.
+**The 50M volume band usually does not fill, and the wider bps price bands are
+depth-limited.** Both are correct answers rather than defects, and you will see
+them within seconds of starting the system. Measured over 2,748 consecutive
+states, the bid side filled 50M in 0% of them and the ask side in 34% — so this
+is something to read per update, not a fact to take on trust from a README.
 
 ### The published ladder is bounded at 500 bps from the touch
 
@@ -121,9 +123,24 @@ So the published ladder covers a stated distance from the touch
 truncating them would break delta application; only what is published is
 bounded.
 
-### What that leaves
+### What that leaves: an asymmetric book
 
-Measured live, with the 500 bps bound in force:
+Measured live over **2,748 consecutive published states**, with the 500 bps
+bound in force:
+
+| side | filled 50M | rate |
+|---|---|---|
+| bid | 0 of 2,748 | **0.0%** |
+| ask | 934 of 2,748 | **34.0%** |
+
+The two sides behave differently, and the reason is visible in the data. When
+the ask side did fill, the worst price touched was almost always a large round
+number — 85,000 (652 times), 84,500 (177), 83,000 (91), 82,500 (14). Those are
+resting sell walls, and whenever one sits inside the 500 bps bound the ask side
+clears 50M. The bid side had no equivalent wall in range during this run and
+never filled.
+
+A typical state:
 
 ```
 BID   1.000M   vwap 81210.37  worst 81206.90  qty  12.31  filled  1.000M  levels   49
@@ -134,32 +151,17 @@ BID  50.000M   vwap 80993.61  worst 77310.02  qty 319.39  filled 25.869M  levels
 BID  50.000M+  vwap 80993.61  worst 77310.02  qty 319.39  filled 25.869M  levels 5509
 ```
 
-* 1M / 5M / 10M / 25M fill.
-* **50M does not** — there is roughly 26M of consolidated liquidity within 500
-  bps of the touch. `fully_filled=false` is the honest answer.
-* The trailing open-ended band (`50M+`, `1000bps+`) reports **all** liquidity
-  inside the bound, which is the meaningful response to "50M+" when 50M exceeds
-  what is there.
-* Wide bps bands report `depth_limited=true` when their bound lies outside the
-  published ladder.
+**This is why `fully_filled` is reported per band, per update, per side.** It is
+not a property of the configuration that a consumer could read once from this
+document and hardcode — it depends on which side you are sweeping and on
+whether a wall happens to be in range at that moment. Over this run the answer
+was "never" on one side and "about a third of the time" on the other.
 
-**The conclusion does not depend on where the bound is set**, which is the
-obvious objection to a claim like this. Comparing the two measurements:
-
-| window | consolidated bid liquidity |
-|---|---|
-| ~106 bps (a REST snapshot) | $23.8M |
-| 500 bps (the published ladder) | $25.9M |
-
-Widening the window nearly fivefold finds about **9% more liquidity** — the
-region just outside the touch is demonstrably thin. Filling 50M would need
-roughly another $24M from somewhere. Tighten the bound to 200 bps or loosen it
-to 1000 and 50M still does not fill; the bound is not doing the work of making
-the claim true.
-
-`depth_limited` discriminates rather than being permanently on: in one live
-sample the ask side's 1000 bps band was flagged while the bid side genuinely
-extended past its bound.
+The bands nearer the touch are stable: 1M, 5M, 10M and 25M filled on both sides
+throughout. The trailing open-ended band (`50M+`, `1000bps+`) always reports all
+liquidity inside the bound, which is the meaningful response to "50M+" whether
+or not 50M itself was reachable. Wide bps bands report `depth_limited=true` when
+their bound lies outside the published ladder.
 
 ### Independently measured
 
@@ -186,8 +188,11 @@ this variable. Two captures 24 hours apart:
 | 2026-09-18 19:01Z | asks |  96.1 bps | $38.7M | $11.3M |
 
 Bid depth **fell 30%** day over day while ask depth **rose 17%** — the variance
-is large and real. Not one of the four measurements comes within $11M of
-filling 50M. The margin is larger than the swing.
+is large and real, and it is the same asymmetry the live sampling found. No
+snapshot measurement came within $11M of filling 50M on either side; the live
+book, which is deeper than a snapshot, reaches it on the ask side about a third
+of the time. Both facts point the same way: the answer moves, so the system
+reports it rather than asserting it.
 
 The price dependence runs in the helpful direction, which is worth stating
 because the instinctive objection is "surely this depends on the price": it
@@ -237,9 +242,14 @@ runner owns all I/O and knows nothing about any exchange's wire format.
 
 Where each axis binds, and which binds first.
 
-**Message rate — roughly 200× headroom.** Measured over a 61-second run: 1559
-consolidated publishes (~25/s), p50 aggregation latency **192 µs**, p99 1181 µs,
-max 4718 µs. Latency here means venue receive to consolidated publish, measured
+**Message rate — roughly 200× headroom.** Measured **host-native on macOS
+(arm64)** over a 61-second run: 1559 consolidated publishes (~25/s), p50
+aggregation latency **192 µs**, p99 1181 µs, max 4718 µs.
+
+The environment matters and these figures should not be replaced with
+container-measured ones. The same build inside colima shows a comparable p50
+(241 µs) and a **max of 2.0 seconds** — VM scheduling, not the aggregator. A
+container-measured tail would badly misrepresent the system. Latency here means venue receive to consolidated publish, measured
 inside the aggregator.
 
 At ~25 publishes/s the aggregator has ~39 ms per cycle and uses ~192 µs of it —
@@ -638,6 +648,36 @@ Two things worth singling out:
   reference implementation would have shared the C++ blind spot.
 
 ---
+
+## An eight-hour soak
+
+The containerised stack was left running unattended overnight on a laptop that
+slept and woke. That turned out to be a better test than a quiet one.
+
+```
+published=38154  latency p50=203us p99=1785us  uptime=28975s
+  binance  BTCUSDT   LIVE  msgs=18697   resync=1  gaps=1  overflow=0  bids=4789 asks=5139
+  okx      BTC-USDT  LIVE  msgs=51521   resync=0  gaps=0  overflow=0  bids=400  asks=400
+  bybit    BTCUSDT   LIVE  msgs=108613  resync=0  gaps=0  overflow=0  bids=200  asks=200
+```
+
+Across 8 hours: 178,831 venue messages, 38,154 consolidated publishes, **87
+disconnects**, and **one** sequence gap — detected and resynced correctly, which
+is the whole point of the sequencing logic. All three venues finished LIVE with
+books at their expected depths.
+
+Of the 87 disconnects, 39 came in multi-venue clusters within seconds of each
+other, which is the host VM losing the network rather than anything per-venue;
+the rest were venue-initiated closes, which these exchanges do routinely. Every
+one recovered automatically.
+
+What this exercises that no unit test can: reconnection with backoff, the
+resync path against a live venue, the staleness watchdog, and the book staying
+correct across all of it.
+
+The `max` latency over this window is not meaningful — it includes the machine
+being asleep. See [System scalability](#system-scalability) for latency measured
+on a machine that was awake.
 
 ## Build requirements and build times
 
