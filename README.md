@@ -197,26 +197,23 @@ venue silent) is the case where nothing is ever published.
 
 ## Scalability
 
-**Message rate.** Measured host-native on macOS/arm64 over 61s: 1559 publishes
-(~25/s), p50 **192 µs**, p99 1181 µs, max 4718 µs. At ~25/s the aggregator has
-~39 ms per cycle and uses ~192 µs — roughly **200× headroom** against the
-consolidated rate. (Container-measured figures are not representative: the same
-build inside colima shows a 2.0 s max from VM scheduling.)
+**Message rate.** Host-native on macOS/arm64 over 61s: 1559 publishes (~25/s),
+p50 **192 µs**, p99 1181 µs. That is ~192 µs of a ~39 ms cycle — **200×
+headroom**. (Container figures are not representative; colima shows a 2.0 s max
+from VM scheduling.)
 
-**Venues.** `kMaxVenues` is 4; raising it is one constant. The merge is a linear
-scan over cursor heads, which beats a heap at this count and stops being optimal
-somewhere around 8–16 venues.
+**Venues.** `kMaxVenues` is 4; raising it is one constant. The linear scan over
+cursor heads beats a heap at this count, and stops being optimal around 8–16.
 
 **Subscribers.** Fan-out is O(subscribers) pointer swaps. The real bound is the
-**synchronous gRPC API: one thread per active stream**, so the ceiling is in the
-hundreds. The callback API is the migration path.
+**synchronous gRPC API: one thread per stream**, so the ceiling is in the
+hundreds; the callback API is the migration path.
 
-**Instruments.** One per process; the proto carries `instrument` throughout, so
-scaling is horizontal.
+**Instruments.** One per process. The proto carries `instrument`, so scaling is
+horizontal.
 
-**Memory.** ~528 KB per published snapshot (5500 levels × 48 B × 2 sides), about
-13 MB/s of allocation at the measured rate. The price bound is what stops this
-growing with uptime.
+**Memory.** ~528 KB per snapshot (5500 levels × 48 B × 2 sides), ~13 MB/s at the
+measured rate. The price bound stops this growing with uptime.
 
 ## Testing
 
@@ -304,23 +301,21 @@ message naming the flag, the rule and the offending value.
 | README | this file | — |
 
 Every service gets its own image and build target from one multi-stage
-Dockerfile, so gRPC compiles once per build rather than four times. Built and
-run on arm64 (Apple Silicon via colima); x86_64 takes the same path but was not
-executed.
+Dockerfile, so gRPC compiles once rather than four times. Built and run on arm64
+(Apple Silicon via colima); x86_64 takes the same path but was not executed.
 
 ## Known limitations
 
-* **50M is marginal**, and which side fills changes with the book. That is
-  reported per update rather than assumed.
-* `GetVenueStatus` does not carry the fatal reason text; it is logged to stderr.
-* The OKX checksum could be implemented with a side table of raw strings inside
-  the OKX adapter only.
-* The gRPC server uses the synchronous API — bounded pool, keepalive to reap
-  half-dead peers, and a bounded wait so cancelled subscribers are reclaimed.
-* Snapshots are allocated per publish rather than pooled: ~13 MB/s, deliberately
-  traded for simpler code.
-* One instrument per process. The proto carries `instrument` throughout, so
-  multi-instrument is additive.
-* No raw ladder RPC. At full depth that is ~440 KB per message and ~11 MB/s per
-  subscriber, so it would need a bounded `max_levels`; the subscription message
-  is factored so adding it is additive.
+* **50M is marginal**, and which side fills changes with the book — reported per
+  update rather than assumed.
+* `GetVenueStatus` has no fatal-reason field; it is logged to stderr instead.
+* The OKX checksum could be added with a side table of raw strings inside the
+  OKX adapter only.
+* Synchronous gRPC server: bounded pool, keepalive to reap half-dead peers, and
+  a bounded wait so cancelled subscribers are reclaimed.
+* Snapshots are allocated per publish, not pooled — ~13 MB/s, traded for simpler
+  code.
+* One instrument per process; multi-instrument is additive.
+* No raw ladder RPC: ~440 KB per message at full depth, so it would need a
+  bounded `max_levels`. The subscription message is factored so adding it is
+  additive.
