@@ -117,6 +117,16 @@ grpc::Status NormaliseBands(const char* field, std::vector<std::int64_t> request
   return grpc::Status::OK;
 }
 
+// Every stream starts the same way: two ladder views, meta, touch.
+template <typename Update>
+void BeginUpdate(const ConsolidatedBook& book, VenueMask mask, bool filtered, Update* update,
+                 LadderView* bids, LadderView* asks) {
+  *bids = MakeView(book, true, mask, filtered);
+  *asks = MakeView(book, false, mask, filtered);
+  FillMeta(book, update->mutable_meta());
+  FillTouch(ComputeTouch(*bids, *asks), update->mutable_touch());
+}
+
 grpc::Status MakeVolumeConfig(const v1::StreamVolumeBandsRequest& request, BandConfig* config) {
   return NormaliseBands("notional_bands_e8",
                         {request.notional_bands_e8().begin(), request.notional_bands_e8().end()},
@@ -283,12 +293,9 @@ grpc::Status MarketDataService::StreamBbo(grpc::ServerContext* context,
                                           grpc::ServerWriter<v1::BboUpdate>* writer) {
   return RunStream(context, request->subscription(),
                    [&](const ConsolidatedBook& book, VenueMask mask, bool filtered) {
-                     const LadderView bids = MakeView(book, true, mask, filtered);
-                     const LadderView asks = MakeView(book, false, mask, filtered);
-
                      v1::BboUpdate update;
-                     FillMeta(book, update.mutable_meta());
-                     FillTouch(ComputeTouch(bids, asks), update.mutable_touch());
+                     LadderView bids, asks;
+                     BeginUpdate(book, mask, filtered, &update, &bids, &asks);
                      FillQuote(book, bids, update.mutable_bid());
                      FillQuote(book, asks, update.mutable_ask());
                      return writer->Write(update);
@@ -303,12 +310,9 @@ grpc::Status MarketDataService::StreamVolumeBands(
   if (!valid.ok()) return valid;
   return RunStream(context, request->subscription(),
                    [&](const ConsolidatedBook& book, VenueMask mask, bool filtered) {
-                     const LadderView bids = MakeView(book, true, mask, filtered);
-                     const LadderView asks = MakeView(book, false, mask, filtered);
-
                      v1::VolumeBandsUpdate update;
-                     FillMeta(book, update.mutable_meta());
-                     FillTouch(ComputeTouch(bids, asks), update.mutable_touch());
+                     LadderView bids, asks;
+                     BeginUpdate(book, mask, filtered, &update, &bids, &asks);
 
                      SideBands side;
                      ComputeSideBands(bids, config, &side);
@@ -327,12 +331,9 @@ grpc::Status MarketDataService::StreamPriceBands(
   if (!valid.ok()) return valid;
   return RunStream(context, request->subscription(),
                    [&](const ConsolidatedBook& book, VenueMask mask, bool filtered) {
-                     const LadderView bids = MakeView(book, true, mask, filtered);
-                     const LadderView asks = MakeView(book, false, mask, filtered);
-
                      v1::PriceBandsUpdate update;
-                     FillMeta(book, update.mutable_meta());
-                     FillTouch(ComputeTouch(bids, asks), update.mutable_touch());
+                     LadderView bids, asks;
+                     BeginUpdate(book, mask, filtered, &update, &bids, &asks);
 
                      SideBands side;
                      ComputeSideBands(bids, config, &side);

@@ -48,41 +48,30 @@ All three venues reach `LIVE` in about 1.5 seconds.
 
 ## What you will see first
 
-**The 50M band often does not fill, and wide bps bands are depth-limited.**
-Both are correct. Read them per update rather than trusting this document.
+**The 50M band often does not fill, and wide bps bands are depth-limited.** Both
+are correct. Read them per update rather than trusting this document.
 
 **The published ladder is bounded to 500 bps from the touch**
 (`--max-publish-bps`). Venue books are never truncated internally, so the diff
 stream accumulates levels far outside any snapshot for as long as the process
-runs. Publishing that unbounded would make every number depend on our uptime,
-and would let a 50M sweep "fill" by running 800–2500 bps out at several percent
-slippage. Internal books stay full depth; only what is published is bounded.
+runs. Publishing that unbounded would make every number depend on our uptime and
+let a 50M sweep "fill" by running 800-2500 bps out at several percent slippage.
 
-Measured over 2,748 consecutive published states:
+Over 2,748 consecutive published states:
 
-| side | filled 50M | rate |
+| side | filled 50M | why |
 |---|---|---|
-| bid | 0 of 2,748 | 0.0% |
-| ask | 934 of 2,748 | 34.0% |
+| bid | 0 of 2,748 (0.0%) | no wall in range |
+| ask | 934 of 2,748 (34.0%) | round-number sell walls — 85,000 in 652 of them |
 
-The sides differ because the ask fills happen when a large round-number sell
-wall sits inside the bound — the worst price touched was 85,000 in 652 of them,
-84,500 in 177, 83,000 in 91. **This is why `fully_filled` is per band, per
-update, per side**: it is not a property of the configuration that a consumer
-could hardcode from a README. 1M/5M/10M/25M fill reliably; the trailing
-open-ended band (`50M+`, `1000bps+`) always reports everything inside the bound.
+**This is why `fully_filled` is per band, per update, per side.** It is not a
+property of the configuration a consumer could hardcode from a README.
+1M/5M/10M/25M fill reliably; the trailing open-ended band always reports
+everything inside the bound.
 
-The conclusion is robust. Widening the window nearly fivefold adds ~9%
-liquidity, and two snapshot captures a day apart — during which bid depth fell
-30% and ask depth rose 17% — never came within $11M of 50M:
-
-| window / date | bid | ask |
-|---|---|---|
-| ~106 bps (snapshot) | $23.8M | — |
-| 500 bps (published ladder) | $25.9M | — |
-| 2026-09-17 snapshot | $34.2M | $33.0M |
-| 2026-09-18 snapshot | $23.8M | $38.7M |
-
+The conclusion is robust to both obvious objections. Widening the window
+fivefold (106 -> 500 bps) adds only ~9% liquidity, and two snapshot captures a
+day apart — bid depth fell 30%, ask rose 17% — never came within $11M of 50M.
 Regenerate with `python3 test/conformance/reference/measure_depth.py`.
 
 ## Assessment criteria
@@ -113,61 +102,55 @@ Regenerate with `python3 test/conformance/reference/measure_depth.py`.
 | `src/aggregator/` | Engine (owns the book), gRPC service, main |
 | `src/clients/` | The four client binaries |
 
-The key structural decision: **`VenueProtocol` has no sockets, no threads and
-no clock.** Sequence validation, snapshot reconciliation and resync triggers are
-pure logic, so all of it is tested from recorded bytes with no network.
+**`VenueProtocol` has no sockets, no threads and no clock** — sequence
+validation, snapshot reconciliation and resync triggers are pure logic, tested
+from recorded bytes with no network.
 
 ## Design decisions
 
-**Fixed-point, not double.** Prices and quantities are `int64` scaled 1e8.
-A price of 100,000 times 0.01 BTC already overflows `int64`, so every product
-routes through `__int128` helpers. The scale travels on the wire in
-`SnapshotMeta`.
+**Fixed-point, not double.** `int64` scaled 1e8. A price of 100,000 times 0.01
+BTC already overflows `int64`, so every product routes through `__int128`. The
+scale travels on the wire.
 
-**Sorted vectors, not `std::map`.** The hot loop is a sequential merge scan;
-contiguous storage beats node-chasing. Updates cluster near the touch, so
-insertion memmoves are short. Venue books are never truncated internally —
-dropping deep levels would make a later update indistinguishable from an insert.
+**Sorted vectors, not `std::map`.** The hot loop is a sequential merge scan.
+Venue books are never truncated internally — dropping deep levels would make a
+later update indistinguishable from an insert.
 
 **One writer per book.** One thread per venue parses in parallel and hands
-deltas over a lock-free SPSC ring; one aggregation thread owns every book, so
-the books need no synchronisation.
+deltas over a lock-free SPSC ring; one aggregation thread owns every book.
 
-**Conflation is safe downstream, unsafe upstream.** Aggregator → subscriber
-carries absolute state, so overwriting loses resolution and nothing else — and
-is *more* timely than a queue, which would hand a lagging subscriber a stale
-state rather than the newest. Venue → aggregator carries deltas, so the ring
-never drops: on a full ring the runner discards the batch and resyncs.
+**Conflation is safe downstream, unsafe upstream.** Downstream carries absolute
+state, so overwriting loses resolution and nothing else — and is *more* timely
+than a queue, which hands a lagging subscriber a stale state. Upstream carries
+deltas, so the ring never drops: on a full ring the runner resyncs.
 
 **Crossed books are reported, not clamped.** Three venues at different cadences
-means `best_bid >= best_ask` happens routinely. The system emits a signed
-spread, a `crossed` flag and per-venue attribution. Fee-adjusting would bake a
-trading assumption into a data service.
+means `best_bid >= best_ask` happens routinely. Signed spread, `crossed` flag,
+per-venue attribution. Fee-adjusting would bake a trading assumption into a data
+service.
 
-**Venue filtering is free.** Per-level venue attribution is required by
-staleness exclusion anyway — it is the identical operation.
+**Venue filtering is free** — per-level attribution is required by staleness
+exclusion anyway, which is the identical operation.
 
-**Bands are computed in one outward walk**, cumulative from the touch, with the
-boundary level consumed partially. `filled_notional` is the actual swept
-notional, so `filled_qty × vwap == filled_notional` holds. Thresholds are
-client-supplied with server defaults.
+**Bands are one outward walk**, cumulative from the touch, boundary level
+consumed partially, so `filled_qty x vwap == filled_notional`. Thresholds are
+client-supplied.
 
-**One TLS stack.** gRPC links BoringSSL; Boost.Asio defaults to OpenSSL, and
-both export `SSL_*`. `.bazelrc` sets `--@boost.asio//:ssl=boringssl` so the
-process has exactly one. `tools/probe/tls_probe.cc` proves it with a live
-handshake. Certificates are verified, with hostname verification.
+**One TLS stack.** gRPC links BoringSSL, Boost.Asio defaults to OpenSSL, both
+export `SSL_*`. `.bazelrc` sets `--@boost.asio//:ssl=boringssl`;
+`tools/probe/tls_probe.cc` proves it with a live handshake. Certificates are
+verified.
 
 **Venue I/O is async.** Beast's concurrent read/write exemption belongs to
 `basic_stream_socket` and does *not* pass through `ssl::stream`. All three
 venues are WSS, so a read-thread-plus-ping-thread design would corrupt TLS under
-load and look like a venue disconnect. Each venue runs one `io_context` on one
-thread.
+load and look like a venue disconnect.
 
-**Keepalives are application frames** on a fixed cadence. OKX wants the text
+**Keepalives are application frames** on a fixed cadence — OKX wants the text
 `ping`, Bybit wants `{"op":"ping"}` every 20s whether or not data flows.
 
-**Shutdown.** The signal handler sets a flag and nothing else; a watcher thread
-calls `Server::Shutdown()`. Measured: SIGTERM to exit in **0.10s**.
+**Shutdown.** The signal handler sets a flag; a watcher thread calls
+`Server::Shutdown()`. SIGTERM to exit in **0.10s**.
 
 ## Per-venue sequencing
 
@@ -178,25 +161,23 @@ calls `Server::Shutdown()`. Measured: SIGTERM to exit in **0.10s**.
 | Bybit | `orderbook.200` | WS snapshot | `u == prev u + 1` |
 
 **Binance buffers before it fetches.** The REST request is issued only after the
-read loop is running, so updates arriving during the round trip are buffered.
-Reconciliation drops `u <= lastUpdateId`, requires the first surviving event to
-straddle at `U <= id+1 <= u`, then replays in order.
+read loop is running, so updates arriving during the round trip are buffered,
+then reconciled: drop `u <= lastUpdateId`, require the first surviving event to
+straddle at `U <= id+1 <= u`, replay in order.
 
 **OKX checks continuity before its no-change heartbeat.** OKX repeats the
 sequence number when nothing moved; if that shortcut ran first, a gap followed
-by a heartbeat would skip validation and diverge silently. Pinned by
-`okx_gap_then_no_change_heartbeat_must_resync`.
+by a heartbeat would skip validation and diverge silently.
 
-`snapshot_limit` is 5000, not less: measured, 5000 gives $28.2M of depth against
-$10.4M at 1000, and Binance carries ~79% of the consolidated book. Request
-weight is handled by rate-limiting resyncs (6/min, backoff with jitter).
+`snapshot_limit` is 5000: measured, that gives $28.2M of depth against $10.4M at
+1000, and Binance carries ~79% of the book. Request weight is handled by
+rate-limiting resyncs (6/min, backoff with jitter).
 
-**The OKX checksum is deliberately not verified.** It is computed over the
-venue's own decimal *string* rendering, which cannot be reproduced after
-normalising to fixed point, and it only ever covered the top 25 levels — nowhere
-near the depth the volume bands consume. Continuity detects *loss*; a checksum
-detects *divergence*. Divergence is covered offline for all three venues by the
-replay test, which is broader than one venue's shallow checksum.
+**The OKX checksum is deliberately not verified.** It covers the venue's own
+decimal *string* rendering, unreproducible after normalising to fixed point, and
+only the top 25 levels — nowhere near the depth the bands consume. Continuity
+detects *loss*; a checksum detects *divergence*, and divergence is covered
+offline for all three venues by the replay test.
 
 ## Failure handling
 
@@ -249,33 +230,26 @@ All offline and deterministic. **No test needs network access.**
 
 | Suite | Covers |
 |---|---|
-| `fixed_test` | Decimal parsing, formatting, `__int128` overflow |
-| `book_test` | Ordering, batch-vs-individual apply equivalence, self-cross |
-| `analytics_test` | Bands and touch against hand-computed values |
-| `concurrency_test` | SPSC ring, conflation, bounded waits, shutdown |
-| `retry_test` | Backoff growth/saturation/reset, resync rate budget |
-| `ws_url_test` | URL parsing including IPv6 |
+| `fixed_test`, `book_test`, `analytics_test` | Parsing, book ordering, bands against hand-computed values |
+| `concurrency_test`, `retry_test`, `ws_url_test` | SPSC ring, conflation, shutdown, backoff, rate budget, URL parsing |
 | `venue_protocol_test` | Sequencing, resync, fatal verdicts, instrument filtering |
 | `grpc_integration_test` | Real engine + server + client: BBO, bands, filtering, validation, staleness, crossed book |
-| `analytics_conformance_test` | Differential against an independent Python implementation |
-| `parser_conformance_test` | 465 parser cases, differential |
-| `replay_conformance_test` | Real captured sessions replayed per venue, plus 16 constructed failure scenarios |
+| `analytics_conformance_test`, `parser_conformance_test` | Differential against an independent Python implementation (465 parser cases) |
+| `replay_conformance_test` | Real captured sessions per venue, plus 16 constructed failure scenarios |
 
 **Not automatically tested:** `src/net`, the runner's connection lifecycle, and
-the gRPC service under real network conditions. Those are covered by manual
-end-to-end runs. The pure logic they wrap — URL parsing, backoff, the rate
-budget, the conflating slot — is covered, because that is where the bugs were.
+the gRPC service under real network conditions — covered by manual end-to-end
+runs. The pure logic they wrap is covered, because that is where the bugs were.
 
 The conformance suite was written independently of this implementation, from the
-specification and the proto comments rather than from the code it checks, and
-contains a reference implementation in Python. Disagreements were resolved on
-their merits before either side changed, which found real bugs in both. The
-goldens are verified non-vacuous: perturbing any expected value by one unit makes
-the suite fail. The Python appears only as offline tooling — there are no `py_*`
-rules in the build at all.
+specification rather than the code it checks, with a reference implementation in
+Python. Disagreements were resolved on their merits before either side changed,
+which found real bugs in both. The goldens are verified non-vacuous: perturbing
+any expected value by one unit makes the suite fail. Python is offline tooling
+only — there are no `py_*` rules in the build.
 
-`tools/check_compose.py` cross-checks the compose file against the Dockerfile
-for the mistakes that build cleanly and fail at `docker run`.
+`tools/check_compose.py` cross-checks compose against the Dockerfile for the
+mistakes that build cleanly and fail at `docker run`.
 
 ### Eight-hour soak
 
@@ -288,19 +262,15 @@ published=38154  latency p50=203us  uptime=28975s
 
 178,831 venue messages, 38,154 publishes, all three venues finishing LIVE.
 
-**`binance resync=1 gaps=1` is the most important line here.** A real sequence
-gap occurred against a live venue, was detected, and the book was rebuilt
-correctly — through the real socket, the real runner, the real resync rate
-limiter and the real REST reconciliation. No test can produce that: a test feeds
-a constructed gap through the protocol in isolation. Sequencing is the hardest
-part of this system and the OKX checksum was deliberately dropped, so evidence
-that the gap path works end to end against a live feed matters more than any
-other single measurement here.
+**`binance resync=1 gaps=1` is the important line.** A real sequence gap occurred
+against a live venue, was detected, and the book was rebuilt — through the real
+socket, runner, rate limiter and REST reconciliation. No test can produce that;
+a test feeds a constructed gap through the protocol in isolation. Sequencing is
+the hardest part of this system and the OKX checksum was deliberately dropped,
+so this is the strongest single piece of evidence here.
 
 **87 disconnects, every one recovered automatically.** 39 came in multi-venue
-clusters within seconds of each other — the host VM losing network overnight,
-not anything per-venue — and the rest were venue-initiated closes, which these
-exchanges do routinely.
+clusters (the host VM losing network overnight); the rest were venue-initiated.
 
 ## Configuration
 

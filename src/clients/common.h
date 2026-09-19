@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <memory>
 #include <span>
+#include <algorithm>
+#include <vector>
 #include <string>
 
 #include "google/protobuf/util/json_util.h"
@@ -53,18 +55,26 @@ inline ClientOptions ParseClientOptions(const Flags& flags) {
   return options;
 }
 
+// Splits "a,b,c". Empty segments are skipped; whitespace is NOT trimmed, so
+// "--venues=binance, okx" is rejected by the server rather than quietly fixed.
+inline std::vector<std::string> SplitCsv(const std::string& text) {
+  std::vector<std::string> out;
+  std::string item;
+  for (const char c : text + ",") {
+    if (c != ',') {
+      item.push_back(c);
+    } else if (!item.empty()) {
+      out.push_back(item);
+      item.clear();
+    }
+  }
+  return out;
+}
+
 inline void FillSubscription(const ClientOptions& options, v1::Subscription* subscription) {
   if (!options.instrument.empty()) subscription->set_instrument(options.instrument);
   subscription->set_min_interval_micros(options.min_interval_micros);
-  std::string venue;
-  for (const char c : options.venues + ",") {
-    if (c == ',') {
-      if (!venue.empty()) subscription->add_venues(venue);
-      venue.clear();
-    } else {
-      venue.push_back(c);
-    }
-  }
+  for (const std::string& venue : SplitCsv(options.venues)) subscription->add_venues(venue);
 }
 
 // Waits for the aggregator to come up rather than exiting on a connection
@@ -128,6 +138,40 @@ inline std::string Bps(std::int64_t bps_e8) {
 // Whole basis points render without decimals, so the output transcribes the
 // specification's "50bps/100bps/..." rather than "50.00bps".
 inline std::string BpsLabel(std::int64_t bps_e8) { return FormatFixed(bps_e8, 0); }
+
+// Drives a server-streaming RPC: read, render, flush, honour --max-updates.
+// Rendering is the only thing the three publishers do differently.
+template <typename Update, typename Reader, typename Render>
+int StreamLoop(const ClientOptions& options, Reader* reader, Render render) {
+  Update update;
+  int count = 0;
+  while (reader->Read(&update)) {
+    if (options.json) {
+      PrintJson(update);
+    } else {
+      render(update);
+    }
+    // One flush per record, so Docker's combined log does not interleave
+    // three services mid-record.
+    std::fflush(stdout);
+    if (options.max_updates > 0 && ++count >= options.max_updates) break;
+  }
+  const grpc::Status status = reader->Finish();
+  if (!status.ok() && options.max_updates == 0) {
+    std::fprintf(stderr, "stream ended: %s\n", status.error_message().c_str());
+    return 1;
+  }
+  return 0;
+}
+
+// "binance:1.50000000 okx:0.50000000 " for a quote's venue attribution.
+inline std::string VenueBreakdown(const v1::Quote& quote) {
+  std::string out;
+  for (const v1::VenueQty& contribution : quote.venues()) {
+    out += contribution.venue() + ":" + FmtQty(contribution.qty_e8()) + " ";
+  }
+  return out;
+}
 
 // One header line per update, shared by all three publishers so their output
 // can be correlated by sequence number in a combined compose log.
