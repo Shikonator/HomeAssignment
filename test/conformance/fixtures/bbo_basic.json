@@ -1,6 +1,6 @@
 {
   "name": "bbo_basic",
-  "description": "Three venues, overlapping prices, uncrossed. Small enough to verify by hand. Exercises per-venue attribution at the touch and a sweep that exhausts the book (fully_filled=false).",
+  "description": "Three venues, overlapping prices, uncrossed. Small enough to verify by hand. Overlapping prices must sum across venues, and the sweep exhausts the book (fully_filled=false).",
   "instrument": "BTCUSDT",
   "scale": {
     "price_e8": 100000000,
@@ -109,59 +109,33 @@
       "bids": [
         {
           "px_e8": 10000000000000,
-          "qty_total_e8": 225000000,
-          "by_venue": {
-            "binance": 150000000,
-            "okx": 75000000
-          }
+          "qty_total_e8": 225000000
         },
         {
           "px_e8": 9999950000000,
-          "qty_total_e8": 600000000,
-          "by_venue": {
-            "binance": 200000000,
-            "bybit": 400000000
-          }
+          "qty_total_e8": 600000000
         },
         {
           "px_e8": 9999900000000,
-          "qty_total_e8": 400000000,
-          "by_venue": {
-            "binance": 300000000,
-            "okx": 100000000
-          }
+          "qty_total_e8": 400000000
         }
       ],
       "asks": [
         {
           "px_e8": 10000050000000,
-          "qty_total_e8": 90000000,
-          "by_venue": {
-            "okx": 90000000
-          }
+          "qty_total_e8": 90000000
         },
         {
           "px_e8": 10000100000000,
-          "qty_total_e8": 260000000,
-          "by_venue": {
-            "binance": 120000000,
-            "okx": 110000000,
-            "bybit": 30000000
-          }
+          "qty_total_e8": 260000000
         },
         {
           "px_e8": 10000150000000,
-          "qty_total_e8": 250000000,
-          "by_venue": {
-            "binance": 250000000
-          }
+          "qty_total_e8": 250000000
         },
         {
           "px_e8": 10000200000000,
-          "qty_total_e8": 500000000,
-          "by_venue": {
-            "bybit": 500000000
-          }
+          "qty_total_e8": 500000000
         }
       ]
     },

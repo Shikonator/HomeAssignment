@@ -20,21 +20,12 @@ PriceBandResult MakePriceBand(std::int64_t offset_bps_e8, Px bound, Wide cum_qty
 
 }  // namespace
 
-const MergedLevel* ViewBestLevel(const LadderView& view) {
-  for (const MergedLevel& level : view.levels) {
-    if (ViewQty(view, level) > 0) return &level;
-  }
-  return nullptr;
-}
-
 Px ViewBestPx(const LadderView& view) {
-  const MergedLevel* best = ViewBestLevel(view);
-  return best ? best->px : 0;
+  return view.levels.empty() ? 0 : view.levels.front().px;
 }
 
 Qty ViewBestQty(const LadderView& view) {
-  const MergedLevel* best = ViewBestLevel(view);
-  return best ? ViewQty(view, *best) : 0;
+  return view.levels.empty() ? 0 : view.levels.front().qty;
 }
 
 TouchInfo ComputeTouch(const LadderView& bids, const LadderView& asks) {
@@ -92,8 +83,7 @@ void ComputeSideBands(const LadderView& side, const BandConfig& config, SideBand
   std::size_t price_index = 0;
 
   for (const MergedLevel& level : side.levels) {
-    const Qty qty = ViewQty(side, level);
-    if (qty <= 0) continue;  // every venue at this price was filtered out
+    const Qty qty = level.qty;
     const Px px = level.px;
 
     // Close each price band this level falls outside, using the cumulative

@@ -77,15 +77,10 @@ int Fixture::VenueIndex(const std::string& venue) const {
   return static_cast<int>(std::distance(venue_names_.begin(), it));
 }
 
-VenueMask Fixture::mask() const {
-  if (!filtered()) {
-    VenueMask all = 0;
-    for (std::size_t i = 0; i < venue_names_.size(); ++i) all |= MaskOf(static_cast<int>(i));
-    return all;
-  }
-  VenueMask m = 0;
-  for (const std::string& v : venue_filter_) m |= MaskOf(VenueIndex(v));
-  return m;
+bool Fixture::Includes(std::size_t venue_index) const {
+  if (venue_filter_.empty()) return true;
+  const std::string& name = venue_names_[venue_index];
+  return std::find(venue_filter_.begin(), venue_filter_.end(), name) != venue_filter_.end();
 }
 
 Fixture Fixture::FromElement(simdjson::dom::element doc) {

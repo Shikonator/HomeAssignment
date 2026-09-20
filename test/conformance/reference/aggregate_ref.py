@@ -105,8 +105,7 @@ def exceeds_int64(v: int) -> bool:
 @dataclass
 class MergedLevel:
     px_e8: int
-    qty_total_e8: int
-    by_venue: dict          # venue -> qty_e8, only venues present at this px
+    qty_total_e8: int       # summed over the venues that contributed
 
 
 @dataclass
@@ -124,13 +123,11 @@ class Touch:
 def merge_side(venue_books: dict, side: str, venues=None, depth=None):
     """K-way merge of per-venue ladders into one consolidated ladder.
 
-    venue_books: {venue: {"bids": [(px_str, qty_str)], "asks": [...]}}
-    `venues` restricts which venues contribute -- this is the same operation
-    as excluding a stale venue, which is why the attribution is not an extra
-    cost of the venue filter.
+    `venues` restricts which venues contribute. That is what staleness
+    exclusion does: a stale venue is simply not a merge input.
     """
     assert side in ("bids", "asks")
-    acc = {}
+    totals = {}
     for venue, book in venue_books.items():
         if venues is not None and venue not in venues:
             continue
@@ -138,13 +135,9 @@ def merge_side(venue_books: dict, side: str, venues=None, depth=None):
             px, qty = parse_e8(px_s), parse_e8(qty_s)
             if qty == 0:                 # qty 0 deletes; never a resting level
                 continue
-            slot = acc.setdefault(px, {})
-            slot[venue] = slot.get(venue, 0) + qty
+            totals[px] = totals.get(px, 0) + qty
 
-    levels = [
-        MergedLevel(px, sum(by_venue.values()), dict(by_venue))
-        for px, by_venue in acc.items()
-    ]
+    levels = [MergedLevel(px, qty) for px, qty in totals.items()]
     levels.sort(key=lambda l: l.px_e8, reverse=(side == "bids"))
     if depth is not None:
         levels = levels[:depth]

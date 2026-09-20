@@ -40,7 +40,6 @@ bool B(simdjson::dom::element e) { return bool(e); }
 
 #define EXPECT_FIXED(what, want, got) EXPECT_TRUE(EqFixed(what, want, got))
 
-// One side of the consolidated ladder, plus the view a subscriber sees.
 struct Side {
   std::vector<MergedLevel> levels;
   LadderView view;
@@ -48,8 +47,11 @@ struct Side {
 };
 
 Side BuildSide(const Fixture& fx, bool descending) {
+  // Only included venues become merge inputs, which is exactly how the engine
+  // excludes a stale venue: it never puts that book in the merge at all.
   std::vector<VenueSideInput> inputs;
   for (std::size_t i = 0; i < fx.books().size(); ++i) {
+    if (!fx.Includes(i)) continue;
     VenueSideInput in;
     in.venue_index = static_cast<int>(i);
     in.levels = descending ? fx.books()[i].bids.levels() : fx.books()[i].asks.levels();
@@ -59,39 +61,20 @@ Side BuildSide(const Fixture& fx, bool descending) {
   side.truncated = MergeSide(descending, inputs, NoTruncation(), &side.levels);
   side.view.levels = side.levels;
   side.view.descending = descending;
-  side.view.mask = fx.mask();
-  side.view.filtered = fx.filtered();
   return side;
 }
 
-// The ladder a subscriber actually sees: filtered levels whose remaining
-// quantity is zero are not part of it.
 void CheckLadder(const Fixture& fx, const Side& side, const char* key) {
   simdjson::dom::element want = fx.expected()["merged"][key];
   std::size_t i = 0;
   for (simdjson::dom::element level : want) {
-    // Skip levels the filter emptied out; the golden omits them entirely.
-    while (i < side.levels.size() && ViewQty(side.view, side.levels[i]) <= 0) ++i;
     ASSERT_LT(i, side.levels.size()) << key << ": ladder ended early, want level "
                                      << FormatFixed(I(level["px_e8"]), 8);
-    const MergedLevel& got = side.levels[i];
     SCOPED_TRACE(std::string(key) + " level " + std::to_string(i));
-    EXPECT_FIXED("px", I(level["px_e8"]), got.px);
-    EXPECT_FIXED("qty", I(level["qty_total_e8"]), ViewQty(side.view, got));
-
-    // Per-venue attribution: staleness exclusion and the venue filter are the
-    // same operation, so this is what makes both correct.
-    Qty summed = 0;
-    for (auto [venue, qty] : simdjson::dom::object(level["by_venue"])) {
-      const int slot = fx.VenueIndex(std::string(venue));
-      EXPECT_FIXED((std::string("by_venue[") + std::string(venue) + "]").c_str(),
-                   std::int64_t(qty), got.by_venue[slot]);
-      summed += std::int64_t(qty);
-    }
-    EXPECT_FIXED("qty_total == sum(by_venue)", summed, ViewQty(side.view, got));
+    EXPECT_FIXED("px", I(level["px_e8"]), side.levels[i].px);
+    EXPECT_FIXED("qty", I(level["qty_total_e8"]), side.levels[i].qty);
     ++i;
   }
-  while (i < side.levels.size() && ViewQty(side.view, side.levels[i]) <= 0) ++i;
   EXPECT_EQ(i, side.levels.size()) << key << ": more levels than the golden expects";
   EXPECT_FALSE(side.truncated) << key << ": unexpected truncation";
 }

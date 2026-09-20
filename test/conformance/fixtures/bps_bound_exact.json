@@ -77,47 +77,29 @@
       "bids": [
         {
           "px_e8": 10000000000000,
-          "qty_total_e8": 100000000,
-          "by_venue": {
-            "binance": 100000000
-          }
+          "qty_total_e8": 100000000
         },
         {
           "px_e8": 9950000000000,
-          "qty_total_e8": 200000000,
-          "by_venue": {
-            "binance": 200000000
-          }
+          "qty_total_e8": 200000000
         },
         {
           "px_e8": 9949999000000,
-          "qty_total_e8": 800000000,
-          "by_venue": {
-            "binance": 800000000
-          }
+          "qty_total_e8": 800000000
         }
       ],
       "asks": [
         {
           "px_e8": 10010000000000,
-          "qty_total_e8": 100000000,
-          "by_venue": {
-            "binance": 100000000
-          }
+          "qty_total_e8": 100000000
         },
         {
           "px_e8": 10060050000000,
-          "qty_total_e8": 200000000,
-          "by_venue": {
-            "binance": 200000000
-          }
+          "qty_total_e8": 200000000
         },
         {
           "px_e8": 10060051000000,
-          "qty_total_e8": 800000000,
-          "by_venue": {
-            "binance": 800000000
-          }
+          "qty_total_e8": 800000000
         }
       ]
     },

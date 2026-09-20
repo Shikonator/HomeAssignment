@@ -3,7 +3,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -79,9 +78,6 @@ class VenueRunner {
     // an unambiguous signal.
     std::chrono::seconds silence_timeout{30};
 
-    // When set, every inbound frame is appended as one JSON line, for the
-    // offline replay-versus-fresh-snapshot check.
-    std::string record_path;
   };
 
   VenueRunner(int venue_index, std::unique_ptr<VenueProtocol> protocol, FeedRing* ring,
@@ -112,7 +108,6 @@ class VenueRunner {
   void MarkHealthy();
   void Publish(std::vector<FeedUpdate>* updates);
   bool ConsumeResyncToken();
-  void Record(std::int64_t recv_ts_ns, std::string_view frame, bool is_rest_snapshot);
   void SetState(VenueState state);
 
   const int venue_index_;
@@ -132,7 +127,6 @@ class VenueRunner {
   RateBudget resync_budget_;
   std::chrono::steady_clock::time_point last_activity_;
   std::vector<FeedUpdate> scratch_;
-  std::ofstream recorder_;
   std::atomic<bool> stopping_{false};
   std::uint64_t reconnect_generation_ = 0;
   bool logged_live_ = false;

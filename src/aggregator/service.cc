@@ -41,29 +41,22 @@ void FillTouch(const TouchInfo& touch, v1::Touch* out) {
   out->set_crossed(touch.crossed);
 }
 
-void FillQuote(const ConsolidatedBook& book, const LadderView& view, v1::Quote* out) {
-  const MergedLevel* best = ViewBestLevel(view);
-  if (best == nullptr) return;
-  out->set_price_e8(best->px);
-  out->set_qty_e8(ViewQty(view, *best));
-  for (int venue = 0; venue < kMaxVenues; ++venue) {
-    if (!(view.mask & MaskOf(venue))) continue;
-    if (best->by_venue[venue] <= 0) continue;
-    v1::VenueQty* contribution = out->add_venues();
-    contribution->set_venue(venue < static_cast<int>(book.venue_names.size())
-                                ? book.venue_names[venue]
-                                : std::to_string(venue));
-    contribution->set_qty_e8(best->by_venue[venue]);
+void FillQuote(const std::vector<MergedLevel>& side, const std::vector<VenueTouch>& touch,
+               v1::Quote* out) {
+  if (side.empty()) return;
+  out->set_price_e8(side.front().px);
+  out->set_qty_e8(side.front().qty);
+  for (const VenueTouch& contribution : touch) {
+    v1::VenueQty* venue = out->add_venues();
+    venue->set_venue(contribution.venue);
+    venue->set_qty_e8(contribution.qty);
   }
 }
 
-LadderView MakeView(const ConsolidatedBook& book, bool bids, VenueMask mask, bool filtered) {
-  LadderView view;
-  view.levels = bids ? book.bids : book.asks;
-  view.descending = bids;
-  view.mask = filtered ? mask : book.contributing_mask;
-  view.filtered = filtered;
-  return view;
+LadderView MakeView(const ConsolidatedBook& book, bool bids) {
+  return LadderView{bids ? std::span<const MergedLevel>(book.bids)
+                         : std::span<const MergedLevel>(book.asks),
+                    bids};
 }
 
 // Nothing else bounds this. Without a cap, a one-line request produces an
@@ -119,10 +112,10 @@ grpc::Status NormaliseBands(const char* field, std::vector<std::int64_t> request
 
 // Every stream starts the same way: two ladder views, meta, touch.
 template <typename Update>
-void BeginUpdate(const ConsolidatedBook& book, VenueMask mask, bool filtered, Update* update,
-                 LadderView* bids, LadderView* asks) {
-  *bids = MakeView(book, true, mask, filtered);
-  *asks = MakeView(book, false, mask, filtered);
+void BeginUpdate(const ConsolidatedBook& book, Update* update, LadderView* bids,
+                 LadderView* asks) {
+  *bids = MakeView(book, true);
+  *asks = MakeView(book, false);
   FillMeta(book, update->mutable_meta());
   FillTouch(ComputeTouch(*bids, *asks), update->mutable_touch());
 }
@@ -185,59 +178,20 @@ std::vector<std::int64_t> DefaultBpsOffsets() {
   return {50 * kScale, 100 * kScale, 200 * kScale, 500 * kScale, 1000 * kScale};
 }
 
-grpc::Status StreamingBase::ResolveSubscription(const v1::Subscription& subscription,
-                                                    VenueMask* mask, bool* filtered) const {
+grpc::Status StreamingBase::CheckInstrument(const v1::Subscription& subscription) const {
   const std::string& instrument = subscription.instrument();
   if (!instrument.empty() && instrument != engine_->config().instrument) {
-    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                        "this server aggregates " + engine_->config().instrument + ", not " +
-                            instrument);
-  }
-
-  if (subscription.venues().empty()) {
-    *filtered = false;
-    *mask = 0;
-    return grpc::Status::OK;
-  }
-
-  *filtered = true;
-  *mask = 0;
-  for (const std::string& requested : subscription.venues()) {
-    bool found = false;
-    for (std::size_t i = 0; i < engine_->venues().size(); ++i) {
-      if (engine_->venues()[i].name == requested) {
-        *mask |= MaskOf(static_cast<int>(i));
-        found = true;
-        break;
-      }
-    }
-    // A typo must never be silently ignored: the client would receive a
-    // plausible book built from venues it did not ask for.
-    //
-    // The message lists what IS configured, because this rejection is the only
-    // place that information reaches a client -- there is no RPC that enumerates
-    // venues before you subscribe, so an error that says only "wrong" leaves the
-    // caller guessing.
-    if (!found) {
-      std::string configured;
-      for (const VenueFeed& venue : engine_->venues()) {
-        if (!configured.empty()) configured += ", ";
-        configured += venue.name;
-      }
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                          "unknown venue '" + requested + "'; configured venues are " +
-                              configured);
-    }
+    return grpc::Status(
+        grpc::StatusCode::INVALID_ARGUMENT,
+        "this server aggregates " + engine_->config().instrument + ", not " + instrument);
   }
   return grpc::Status::OK;
 }
 
-grpc::Status StreamingBase::RunStream(
-    grpc::ServerContext* context, const v1::Subscription& subscription,
-    const std::function<bool(const ConsolidatedBook&, VenueMask, bool)>& emit) {
-  VenueMask mask = 0;
-  bool filtered = false;
-  const grpc::Status status = ResolveSubscription(subscription, &mask, &filtered);
+grpc::Status StreamingBase::RunStream(grpc::ServerContext* context,
+                                      const v1::Subscription& subscription,
+                                      const std::function<bool(const ConsolidatedBook&)>& emit) {
+  const grpc::Status status = CheckInstrument(subscription);
   if (!status.ok()) return status;
 
   auto slot = engine_->AddSubscriber();
@@ -255,7 +209,7 @@ grpc::Status StreamingBase::RunStream(
   // Send the current state immediately rather than making a new subscriber wait
   // for the next tick, which on a quiet book could be a long time.
   if (auto initial = engine_->Latest()) {
-    if (!emit(*initial, mask, filtered)) {
+    if (!emit(*initial)) {
       engine_->RemoveSubscriber(slot);
       return grpc::Status::OK;
     }
@@ -281,7 +235,7 @@ grpc::Status StreamingBase::RunStream(
       }
       last_sent = now;
     }
-    if (!emit(*book, mask, filtered)) break;
+    if (!emit(*book)) break;
   }
 
   engine_->RemoveSubscriber(slot);
@@ -292,12 +246,12 @@ grpc::Status BboService::Stream(grpc::ServerContext* context,
                                 const v1::StreamBboRequest* request,
                                 grpc::ServerWriter<v1::BboUpdate>* writer) {
   return RunStream(context, request->subscription(),
-                   [&](const ConsolidatedBook& book, VenueMask mask, bool filtered) {
+                   [&](const ConsolidatedBook& book) {
                      v1::BboUpdate update;
                      LadderView bids, asks;
-                     BeginUpdate(book, mask, filtered, &update, &bids, &asks);
-                     FillQuote(book, bids, update.mutable_bid());
-                     FillQuote(book, asks, update.mutable_ask());
+                     BeginUpdate(book, &update, &bids, &asks);
+                     FillQuote(book.bids, book.bid_touch, update.mutable_bid());
+                     FillQuote(book.asks, book.ask_touch, update.mutable_ask());
                      return writer->Write(update);
                    });
 }
@@ -309,10 +263,10 @@ grpc::Status VolumeBandsService::Stream(grpc::ServerContext* context,
   const grpc::Status valid = MakeVolumeConfig(*request, &config);
   if (!valid.ok()) return valid;
   return RunStream(context, request->subscription(),
-                   [&](const ConsolidatedBook& book, VenueMask mask, bool filtered) {
+                   [&](const ConsolidatedBook& book) {
                      v1::VolumeBandsUpdate update;
                      LadderView bids, asks;
-                     BeginUpdate(book, mask, filtered, &update, &bids, &asks);
+                     BeginUpdate(book, &update, &bids, &asks);
 
                      SideBands side;
                      ComputeSideBands(bids, config, &side);
@@ -330,10 +284,10 @@ grpc::Status PriceBandsService::Stream(grpc::ServerContext* context,
   const grpc::Status valid = MakePriceConfig(*request, &config);
   if (!valid.ok()) return valid;
   return RunStream(context, request->subscription(),
-                   [&](const ConsolidatedBook& book, VenueMask mask, bool filtered) {
+                   [&](const ConsolidatedBook& book) {
                      v1::PriceBandsUpdate update;
                      LadderView bids, asks;
-                     BeginUpdate(book, mask, filtered, &update, &bids, &asks);
+                     BeginUpdate(book, &update, &bids, &asks);
 
                      SideBands side;
                      ComputeSideBands(bids, config, &side);
@@ -362,30 +316,13 @@ grpc::Status StatusService::GetVenueStatus(grpc::ServerContext* /*context*/,
   }
 
   if (auto book = engine_->Latest()) {
-    for (int i = 0; i < response->venues_size(); ++i) {
+    for (int i = 0; i < response->venues_size() && i < static_cast<int>(book->clocks.size()); ++i) {
       v1::VenueStatus* status = response->mutable_venues(i);
-      Qty bid_levels = 0;
-      Qty ask_levels = 0;
-      for (const MergedLevel& level : book->bids) {
-        if (level.by_venue[i] > 0) ++bid_levels;
-      }
-      for (const MergedLevel& level : book->asks) {
-        if (level.by_venue[i] > 0) ++ask_levels;
-      }
-      status->set_bid_levels(static_cast<int>(bid_levels));
-      status->set_ask_levels(static_cast<int>(ask_levels));
-      for (const MergedLevel& level : book->bids) {
-        if (level.by_venue[i] > 0) {
-          status->set_best_bid_e8(level.px);
-          break;
-        }
-      }
-      for (const MergedLevel& level : book->asks) {
-        if (level.by_venue[i] > 0) {
-          status->set_best_ask_e8(level.px);
-          break;
-        }
-      }
+      const VenueClockInfo& clock = book->clocks[i];
+      status->set_bid_levels(clock.bid_levels);
+      status->set_ask_levels(clock.ask_levels);
+      status->set_best_bid_e8(clock.best_bid);
+      status->set_best_ask_e8(clock.best_ask);
     }
   }
 

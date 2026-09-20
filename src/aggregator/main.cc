@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
         "  --staleness-ms=N          exclude a venue silent this long (default 5000)\n"
         "  --max-publish-bps=N       publish depth within N bps of the touch (default 500)\n"
         "  --ca-file=PATH            CA bundle; empty uses the system trust store\n"
-        "  --record-dir=PATH         write raw frame recordings for replay tests\n");
+);
     return 0;
   }
 
@@ -80,13 +80,12 @@ int main(int argc, char** argv) {
   // silent default.
   flags.RequireKnown({"help", "listen", "instrument", "venues", "binance-ws", "binance-rest",
                       "okx-ws", "okx-symbol", "bybit-ws", "snapshot-limit", "staleness-ms",
-                      "max-publish-bps", "ca-file", "record-dir"});
+                      "max-publish-bps", "ca-file"});
 
   const std::string listen = flags.Get("listen", "0.0.0.0:50051");
   const std::string instrument = flags.Get("instrument", "BTCUSDT");
   const std::string selected = flags.Get("venues", "binance,okx,bybit");
   const std::string ca_file = flags.Get("ca-file", "");
-  const std::string record_dir = flags.Get("record-dir", "");
 
   md::VenueRunner::Options runner_options;
   runner_options.ca_file = ca_file;
@@ -104,13 +103,9 @@ int main(int argc, char** argv) {
                    index + 1, md::kMaxVenues);
       std::exit(1);
     }
-    md::VenueRunner::Options options = runner_options;
-    if (!record_dir.empty()) {
-      options.record_path = record_dir + "/" + std::string(protocol->name()) + ".jsonl";
-    }
     rings.push_back(std::make_unique<md::FeedRing>(1024));
     runners.push_back(std::make_unique<md::VenueRunner>(index, std::move(protocol),
-                                                        rings.back().get(), options));
+                                                        rings.back().get(), runner_options));
   };
 
   std::istringstream venue_list(selected);

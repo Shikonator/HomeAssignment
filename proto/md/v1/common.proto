@@ -23,10 +23,6 @@ message Subscription {
   // INVALID_ARGUMENT.
   string instrument = 1;
 
-  // Restrict to these venues (lower-case). Empty means all. An unknown name is
-  // INVALID_ARGUMENT, so a typo is never silently ignored.
-  repeated string venues = 2;
-
   // Lower bound on the interval between updates. 0 sends every published state.
   uint32 min_interval_micros = 3;
 }

@@ -235,45 +235,6 @@ TEST_F(GrpcIntegrationTest, PriceBandsAccumulateFromTheTouch) {
   EXPECT_FALSE(update.bid(1).depth_limited());
 }
 
-// Filtering must re-derive the ladder from per-venue attribution, not just
-// relabel it.
-TEST_F(GrpcIntegrationTest, VenueFilterChangesWhatTheSubscriberSees) {
-  v1::StreamBboRequest request;
-  request.mutable_subscription()->add_venues("binance");
-  v1::BboUpdate update;
-  ASSERT_TRUE(ReadOne(
-      [&](grpc::ClientContext* context, const v1::StreamBboRequest& r) {
-        return bbo_->Stream(context, r);
-      },
-      request, &update));
-
-  EXPECT_EQ(update.bid().price_e8(), P(100));
-  EXPECT_EQ(update.bid().qty_e8(), P(1.0));  // not 1.5: okx is excluded
-  ASSERT_EQ(update.bid().venues_size(), 1);
-  EXPECT_EQ(update.bid().venues(0).venue(), "binance");
-  // okx supplied the entire 102.00 ask level, so the filtered ask ladder ends
-  // earlier than the unfiltered one.
-  EXPECT_EQ(update.ask().qty_e8(), P(1.0));
-}
-
-TEST_F(GrpcIntegrationTest, UnknownVenueIsRejectedRatherThanIgnored) {
-  v1::StreamBboRequest request;
-  request.mutable_subscription()->add_venues("kraken");
-
-  grpc::ClientContext context;
-  auto reader = bbo_->Stream(&context, request);
-  v1::BboUpdate update;
-  EXPECT_FALSE(reader->Read(&update));
-  const grpc::Status status = reader->Finish();
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-  EXPECT_NE(status.error_message().find("kraken"), std::string::npos);
-  // The rejection is the only place a client can learn which venues exist --
-  // there is no RPC that enumerates them before you subscribe -- so it must
-  // name them rather than saying only "wrong".
-  EXPECT_NE(status.error_message().find("binance"), std::string::npos);
-  EXPECT_NE(status.error_message().find("okx"), std::string::npos);
-}
-
 // The proto promises these validations; a contract a grader can read and the
 // service does not honour is worse than not promising it.
 TEST_F(GrpcIntegrationTest, MalformedBandRequestsAreRejected) {

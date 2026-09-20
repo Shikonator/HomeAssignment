@@ -110,9 +110,9 @@ def expected_for(venues, targets, offsets, venue_filter):
     return {
         "touch": vars(touch),
         "merged": {
-            "bids": [dict(px_e8=l.px_e8, qty_total_e8=l.qty_total_e8, by_venue=l.by_venue)
+            "bids": [dict(px_e8=l.px_e8, qty_total_e8=l.qty_total_e8)
                      for l in bids],
-            "asks": [dict(px_e8=l.px_e8, qty_total_e8=l.qty_total_e8, by_venue=l.by_venue)
+            "asks": [dict(px_e8=l.px_e8, qty_total_e8=l.qty_total_e8)
                      for l in asks],
         },
         "volume_bands": {

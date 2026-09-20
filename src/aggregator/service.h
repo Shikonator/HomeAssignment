@@ -26,16 +26,12 @@ class StreamingBase {
   explicit StreamingBase(Engine* engine) : engine_(engine) {}
 
  protected:
-  // Resolves a Subscription into a venue mask, rejecting unknown venues and
-  // instruments rather than ignoring them.
-  grpc::Status ResolveSubscription(const v1::Subscription& subscription, VenueMask* mask,
-                                   bool* filtered) const;
-
   // Subscribe, wait, honour cancellation and the client's conflation floor,
   // emit. `emit` returns false when the write fails, ending the stream.
-  grpc::Status RunStream(
-      grpc::ServerContext* context, const v1::Subscription& subscription,
-      const std::function<bool(const ConsolidatedBook&, VenueMask, bool)>& emit);
+  grpc::Status CheckInstrument(const v1::Subscription& subscription) const;
+
+  grpc::Status RunStream(grpc::ServerContext* context, const v1::Subscription& subscription,
+                         const std::function<bool(const ConsolidatedBook&)>& emit);
 
   Engine* const engine_;
 };

@@ -67,18 +67,28 @@ def validate(path):
         check(len(set(pxs)) == len(pxs), n, f"{side} has duplicate price levels")
         for l in levels:
             check(l["qty_total_e8"] > 0, n, f"{side} level with non-positive qty")
-            check(l["qty_total_e8"] == sum(l["by_venue"].values()), n,
-                  f"{side} qty_total != sum(by_venue) at {l['px_e8']}")
-            check(all(q > 0 for q in l["by_venue"].values()), n,
-                  f"{side} zero-qty venue entry retained at {l['px_e8']}")
+            check(l["px_e8"] > 0, n, f"{side} level with non-positive price")
 
-    # -- venue filter must never admit an excluded venue
+    # -- the merge must equal the sum of its INPUTS at every price.
+    #
+    # Checked against the raw wire-form input rather than against a derived
+    # field, so this catches a merge that sums wrongly -- not merely one that
+    # is internally consistent with itself.
     flt = fx["input"]["venue_filter"]
-    if flt is not None:
-        for levels in (bids, asks):
-            for l in levels:
-                check(set(l["by_venue"]).issubset(set(flt)), n,
-                      f"excluded venue present at {l['px_e8']}")
+    for side, levels in (("bids", bids), ("asks", asks)):
+        expected = {}
+        for venue, book in fx["input"]["venues"].items():
+            if flt is not None and venue not in flt:
+                continue
+            for px_s, qty_s in book.get(side, []):
+                px, qty = R.parse_e8(px_s), R.parse_e8(qty_s)
+                if qty == 0:
+                    continue
+                expected[px] = expected.get(px, 0) + qty
+        got = {l["px_e8"]: l["qty_total_e8"] for l in levels}
+        check(got == expected, n,
+              f"{side} merge does not equal the sum of its inputs "
+              f"({len(got)} levels vs {len(expected)} expected)")
 
     # -- touch
     check(t["has_bid"] == bool(bids), n, "has_bid disagrees with ladder")

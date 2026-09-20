@@ -75,10 +75,8 @@ def build(name, description, venues, notionals=None, offsets=None,
         "expected": {
             "touch": vars(touch),
             "merged": {
-                "bids": [dict(px_e8=l.px_e8, qty_total_e8=l.qty_total_e8,
-                              by_venue=l.by_venue) for l in bids],
-                "asks": [dict(px_e8=l.px_e8, qty_total_e8=l.qty_total_e8,
-                              by_venue=l.by_venue) for l in asks],
+                "bids": [dict(px_e8=l.px_e8, qty_total_e8=l.qty_total_e8) for l in bids],
+                "asks": [dict(px_e8=l.px_e8, qty_total_e8=l.qty_total_e8) for l in asks],
             },
             "volume_bands": {"bid": [vars(b) for b in vb_bid],
                              "ask": [vars(b) for b in vb_ask]},
@@ -118,7 +116,7 @@ FIXTURES = []
 FIXTURES.append(build(
     "bbo_basic",
     "Three venues, overlapping prices, uncrossed. Small enough to verify by "
-    "hand. Exercises per-venue attribution at the touch and a sweep that "
+    "hand. Overlapping prices must sum across venues, and the sweep "
     "exhausts the book (fully_filled=false).",
     {
         "binance": {
@@ -163,8 +161,8 @@ FIXTURES.append(build(
         },
     },
     notes="Venue ladders deliberately share prices at some levels (binance "
-          "0.01 tick vs bybit 0.05 vs okx 0.10) so the merge must combine "
-          "attribution rather than concatenate.",
+          "0.01 tick vs bybit 0.05 vs okx 0.10) so the merge must SUM at shared "
+          "prices rather than concatenate.",
 ))
 
 # 3 -- crossed consolidated book.
@@ -263,22 +261,21 @@ _FILTER_VENUES = {
     },
 }
 FIXTURES.append(build(
-    "venue_filter_binance_okx",
-    "Same book, bybit excluded. Excluding a venue by request and excluding a "
-    "stale venue are the identical operation, so this fixture covers both. "
-    "bybit sets the unfiltered touch on both sides, so removing it must move "
-    "the touch rather than merely reduce a quantity.",
+    "stale_venue_excluded",
+    "Same book with bybit excluded, which is what the engine does when a venue "
+    "goes stale: it is simply not a merge input. bybit sets the touch on both "
+    "sides here, so removing it must MOVE the touch rather than merely reduce "
+    "a quantity -- and it un-crosses the book.",
     _FILTER_VENUES,
     venue_filter={"binance", "okx"},
-    notes="Unfiltered touch is bybit 100000.50 / 100000.75. Filtered touch "
-          "must become 100000.00 / 100000.50 with bybit absent from every "
-          "by_venue map.",
+    notes="With all three venues the touch is bybit 100000.50 / 100000.75 and "
+          "the book is crossed. Excluding bybit moves the touch to 100000.00 / "
+          "100000.50 and un-crosses it.",
 ))
 FIXTURES.append(build(
-    "venue_filter_unfiltered_baseline",
-    "The venue_filter_binance_okx book with no filter applied, so a test can "
-    "assert the filtered view is a strict re-derivation of this one and that "
-    "qty_total equals the sum of by_venue at every level.",
+    "all_venues_baseline",
+    "The same book with every venue contributing, so the excluded-venue case "
+    "above can be compared against it.",
     _FILTER_VENUES,
 ))
 

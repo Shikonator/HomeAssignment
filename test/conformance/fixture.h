@@ -30,14 +30,16 @@ class Fixture {
   const std::string& name() const { return name_; }
   const std::string& description() const { return description_; }
 
-  // Sorted, so by_venue slot assignment does not depend on JSON key order.
+  // Sorted, so venue slot assignment does not depend on JSON key order.
   const std::vector<std::string>& venue_names() const { return venue_names_; }
   int VenueIndex(const std::string& venue) const;
 
   const std::vector<VenueBook>& books() const { return books_; }
+  // Which venues are merge inputs. An empty filter means all of them; a
+  // non-empty one is what staleness exclusion does -- the engine simply does
+  // not pass a stale venue's book to the merge.
   const std::vector<std::string>& venue_filter() const { return venue_filter_; }
-  bool filtered() const { return !venue_filter_.empty(); }
-  VenueMask mask() const;
+  bool Includes(std::size_t venue_index) const;
   const BandConfig& bands() const { return bands_; }
   simdjson::dom::element expected() const { return expected_; }
 

@@ -32,9 +32,9 @@ whole path: parse → book → merge → analytics.
     python3 reference/check_fixtures.py         # validate the goldens
 
 `check_fixtures.py` checks properties that hold independently of how the
-goldens were computed — ladder ordering, `qty_total == sum(by_venue)`, band
-monotonicity, VWAP bracketed by touch and worst price, every emitted value
-fitting in `int64`. A buggy reference produces self-consistent nonsense, so the
+goldens were computed — ladder ordering, the merge equalling the sum of its
+inputs, band monotonicity, VWAP bracketed by touch and worst price, every
+emitted value fitting in `int64`. A buggy reference produces self-consistent nonsense, so the
 goldens are verified before any C++ is asserted against them.
 
 The goldens are also **non-vacuous**: perturbing any expected value by one unit
@@ -44,12 +44,12 @@ makes the suite fail.
 
 | fixture | pins |
 |---|---|
-| `bbo_basic` | hand-verifiable; per-venue attribution at the touch; a sweep deeper than the book |
+| `bbo_basic` | hand-verifiable; overlapping prices summed across venues; a sweep deeper than the book |
 | `deep_50m_sweep` | intermediate `px*qty` of 1.1e22 — three orders past `INT64_MAX` |
 | `crossed_book` | `best_bid > best_ask`: signed spread, `crossed=true` |
 | `empty_ask_side`, `empty_book` | derived fields zeroed, never computed from a zero price |
 | `bps_bound_exact` | a level exactly on the 50bps bound, both sides, outward rounding |
-| `venue_filter_*` | filtered view re-derived from attribution; excluding a venue un-crosses the book |
+| `stale_venue_excluded`, `all_venues_baseline` | a venue dropped from the merge — what staleness exclusion does — moves the touch and un-crosses the book |
 | `parser_corpus` | 465 `ParseFixed` cases incl. the `INT64_MAX` boundary, non-ASCII digits, embedded NUL |
 | `random_books_corpus` | 180 books with targets placed **exactly on level boundaries** |
 | `venue_scenarios` | 16 constructed frame sequences: gaps, heartbeats, mid-stream snapshots, fatal rejections |

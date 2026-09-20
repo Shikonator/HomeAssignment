@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -12,38 +11,34 @@
 
 namespace md {
 
-// Every slot costs 8 bytes on every published level, so this is sized to the
-// venues actually configured rather than to a guess about future ones. Adding
-// a venue is a one-constant recompile; the aggregator refuses to start if the
-// configuration exceeds it.
+// Adding a venue is a one-constant recompile; the aggregator refuses to start
+// if the configuration exceeds it.
 inline constexpr int kMaxVenues = 3;
 
-using VenueMask = std::uint32_t;
-
-inline constexpr VenueMask MaskOf(int venue_index) {
-  return VenueMask{1} << venue_index;
-}
-
-// The per-venue array is not overhead for the venue filter: staleness
-// exclusion is the identical operation, so the filter is free.
 struct MergedLevel {
   Px px = 0;
-  Qty qty = 0;  // sum over the venues that contributed to this ladder
-  std::array<Qty, kMaxVenues> by_venue{};
-
-  Qty QtyFor(VenueMask mask) const {
-    Qty total = 0;
-    for (int v = 0; v < kMaxVenues; ++v) {
-      if (mask & MaskOf(v)) total += by_venue[v];
-    }
-    return total;
-  }
+  Qty qty = 0;  // summed over the venues that contributed
 };
 
+// Who is resting at the touch. Computed only for the best level, because that
+// is the only place a consumer can use it -- carrying it on every level cost
+// 24 bytes each and served nothing else.
+struct VenueTouch {
+  std::string venue;
+  Qty qty = 0;
+};
+
+// Per-venue state at publish time. The depth and touch figures come straight
+// off that venue's own book, which the engine already holds -- the status
+// endpoint previously re-derived them by scanning the merged ladder.
 struct VenueClockInfo {
   std::string name;
   std::int64_t last_recv_ts_ns = 0;
   std::int64_t last_exchange_ts_ns = 0;
+  int bid_levels = 0;
+  int ask_levels = 0;
+  Px best_bid = 0;
+  Px best_ask = 0;
 };
 
 // Immutable consolidated state, produced once per publish and shared by every
@@ -55,14 +50,14 @@ struct ConsolidatedBook {
   std::string instrument;
 
   // Index-aligned with the MergedLevel::by_venue slots.
-  std::vector<std::string> venue_names;
-  VenueMask contributing_mask = 0;
   std::vector<std::string> contributing;
   std::vector<std::string> stale;
   std::vector<VenueClockInfo> clocks;
 
   std::vector<MergedLevel> bids;  // best first: descending
   std::vector<MergedLevel> asks;  // best first: ascending
+  std::vector<VenueTouch> bid_touch;
+  std::vector<VenueTouch> ask_touch;
 
   // True when the ladder stopped at the configured depth rather than at the end
   // of the underlying books.
@@ -75,13 +70,13 @@ struct ConsolidatedBook {
     publish_ts_ns = 0;
     ingest_recv_ts_ns = 0;
     instrument.clear();
-    venue_names.clear();
-    contributing_mask = 0;
     contributing.clear();
     stale.clear();
     clocks.clear();
     bids.clear();
     asks.clear();
+    bid_touch.clear();
+    ask_touch.clear();
     bids_truncated = false;
     asks_truncated = false;
   }

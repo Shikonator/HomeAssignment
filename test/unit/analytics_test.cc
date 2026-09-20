@@ -22,25 +22,16 @@ constexpr Px P(double units) { return static_cast<Px>(units * kScale); }
 std::vector<MergedLevel> MakeBidLadder() {
   std::vector<MergedLevel> ladder(3);
   ladder[0].px = P(100);
-  ladder[0].by_venue[0] = P(1.0);
-  ladder[0].by_venue[1] = P(0.5);
   ladder[0].qty = P(1.5);
-
   ladder[1].px = P(99);
-  ladder[1].by_venue[0] = P(2.0);
   ladder[1].qty = P(2.0);
-
   ladder[2].px = P(98);
-  ladder[2].by_venue[1] = P(3.0);
   ladder[2].qty = P(3.0);
   return ladder;
 }
 
 LadderView BidView(const std::vector<MergedLevel>& ladder) {
-  LadderView view;
-  view.levels = ladder;
-  view.descending = true;
-  return view;
+  return LadderView{ladder, true};
 }
 
 BandConfig Config() {
@@ -157,29 +148,6 @@ TEST(PriceBands, FlagsBandsThatOutrunThePublishedLadder) {
   EXPECT_EQ(open.notional_e8, P(642));
 }
 
-// Filtering to a venue subset must re-derive the ladder from per-venue
-// attribution, including dropping levels that no included venue supplies.
-TEST(VenueFilter, ReDerivesLadderFromAttribution) {
-  const auto ladder = MakeBidLadder();
-  LadderView view = BidView(ladder);
-  view.filtered = true;
-  view.mask = MaskOf(0);  // venue 0 only
-
-  EXPECT_EQ(ViewBestPx(view), P(100));
-  EXPECT_EQ(ViewBestQty(view), P(1.0));  // not 1.5: venue 1 is excluded
-
-  BandConfig config;
-  config.notionals_e8 = {P(10000)};  // unfillable, so it reports the full sweep
-  SideBands bands;
-  ComputeSideBands(view, config, &bands);
-
-  // Venue 0 holds only 100.00 x 1.0 and 99.00 x 2.0; the 98.00 level was
-  // supplied entirely by venue 1 and must disappear.
-  EXPECT_EQ(bands.volume[0].filled_qty_e8, P(3.0));
-  EXPECT_EQ(bands.volume[0].filled_notional_e8, P(298));
-  EXPECT_EQ(bands.volume[0].levels_consumed, 2);
-}
-
 TEST(Touch, NormalBook) {
   std::vector<MergedLevel> bids(1), asks(1);
   bids[0].px = P(100);
@@ -187,8 +155,8 @@ TEST(Touch, NormalBook) {
   asks[0].px = P(101);
   asks[0].qty = P(1);
 
-  LadderView bid_view{bids, true, 0, false};
-  LadderView ask_view{asks, false, 0, false};
+  LadderView bid_view{bids, true};
+  LadderView ask_view{asks, false};
   const TouchInfo touch = ComputeTouch(bid_view, ask_view);
 
   EXPECT_TRUE(touch.has_bid);
@@ -208,8 +176,8 @@ TEST(Touch, CrossedBookIsReportedWithSignedSpread) {
   asks[0].px = P(100);
   asks[0].qty = P(1);
 
-  LadderView bid_view{bids, true, 0, false};
-  LadderView ask_view{asks, false, 0, false};
+  LadderView bid_view{bids, true};
+  LadderView ask_view{asks, false};
   const TouchInfo touch = ComputeTouch(bid_view, ask_view);
 
   EXPECT_TRUE(touch.crossed);
@@ -225,8 +193,8 @@ TEST(Touch, EmptySideYieldsZeroedDerivedFields) {
   bids[0].px = P(100);
   bids[0].qty = P(1);
 
-  LadderView bid_view{bids, true, 0, false};
-  LadderView ask_view{empty, false, 0, false};
+  LadderView bid_view{bids, true};
+  LadderView ask_view{empty, false};
   const TouchInfo touch = ComputeTouch(bid_view, ask_view);
 
   EXPECT_TRUE(touch.has_bid);
@@ -240,7 +208,7 @@ TEST(Touch, EmptySideYieldsZeroedDerivedFields) {
 
 TEST(Bands, EmptySideStillEmitsAlignedBands) {
   std::vector<MergedLevel> empty;
-  LadderView view{empty, true, 0, false};
+  LadderView view{empty, true};
   SideBands bands;
   ComputeSideBands(view, Config(), &bands);
 
@@ -265,8 +233,6 @@ TEST(MergeSide, InterleavesVenuesAndSumsSharedPrices) {
   ASSERT_EQ(out.size(), 3u);
   EXPECT_EQ(out[0].px, P(100));
   EXPECT_EQ(out[0].qty, P(1.5));
-  EXPECT_EQ(out[0].by_venue[0], P(1.0));
-  EXPECT_EQ(out[0].by_venue[1], P(0.5));
   EXPECT_EQ(out[1].px, P(99));
   EXPECT_EQ(out[2].px, P(98));
 }

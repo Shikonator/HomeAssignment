@@ -12,15 +12,7 @@ bool MergeSide(bool descending, std::span<const VenueSideInput> inputs,
   std::array<std::size_t, kMaxVenues> cursor{};
   const std::size_t n = inputs.size();
 
-  // The aggregator refuses to start with more venues than slots, but MergeSide
-  // is public and takes a caller-supplied index. Without this, a misconfigured
-  // or future caller gets a silent out-of-bounds write into the middle of a
-  // MergedLevel -- memory corruption presenting as wrong prices.
   assert(n <= static_cast<std::size_t>(kMaxVenues));
-  for (const VenueSideInput& input : inputs) {
-    assert(input.venue_index >= 0 && input.venue_index < kMaxVenues);
-    (void)input;
-  }
 
   Wide cumulative_notional = 0;
   bool truncated = false;
@@ -75,7 +67,6 @@ bool MergeSide(bool descending, std::span<const VenueSideInput> inputs,
       if (cursor[i] >= in.levels.size()) continue;
       if (in.levels[cursor[i]].px != best) continue;
       const Qty q = in.levels[cursor[i]].qty;
-      level.by_venue[in.venue_index] = q;
       level.qty += q;
       ++cursor[i];
     }

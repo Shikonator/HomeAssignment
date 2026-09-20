@@ -54,22 +54,11 @@ struct SideBands {
   std::vector<PriceBandResult> price;
 };
 
-// One side of a published ladder, optionally restricted to a subset of venues.
-// `filtered == false` is the common path and reads MergedLevel::qty directly
-// instead of re-summing the per-venue array.
 struct LadderView {
   std::span<const MergedLevel> levels;
   bool descending = false;
-  VenueMask mask = 0;
-  bool filtered = false;
 };
 
-inline Qty ViewQty(const LadderView& view, const MergedLevel& level) {
-  return view.filtered ? level.QtyFor(view.mask) : level.qty;
-}
-
-// First level carrying non-zero quantity under the view's filter.
-const MergedLevel* ViewBestLevel(const LadderView& view);
 Px ViewBestPx(const LadderView& view);
 Qty ViewBestQty(const LadderView& view);
 

@@ -132,8 +132,17 @@ void Engine::Publish() {
 
   for (std::size_t i = 0; i < venues_.size(); ++i) {
     const std::string& name = venues_[i].name;
-    book->venue_names.push_back(name);
 
+    // Two conditions because they answer different questions, not one twice.
+    //
+    // `live` drops a venue the moment it starts resyncing: Resync() sets
+    // kSyncing but books_[i] still holds the OLD book until a fresh snapshot
+    // lands, so freshness alone would publish stale prices for seconds.
+    //
+    // `fresh` drops a connected-but-silent venue, long before the runner's 30s
+    // watchdog tears the socket down. And note last_recv_ns_ is stamped in
+    // Apply(), not on receipt -- so it measures data that actually reached the
+    // book, which the runner cannot know and cannot answer for us.
     const auto state = static_cast<VenueState>(venues_[i].stats->state.load());
     const bool live = (state == VenueState::kLive);
     const bool fresh = last_recv_ns_[i] != 0 && (now_steady - last_recv_ns_[i]) < staleness_ns;
@@ -143,7 +152,6 @@ void Engine::Publish() {
     // subscriber-facing venue filter, which is why the per-level attribution
     // array pays for itself twice.
     if (live && fresh) {
-      book->contributing_mask |= MaskOf(static_cast<int>(i));
       book->contributing.push_back(name);
       bid_inputs.push_back({static_cast<int>(i), books_[i].bids.levels()});
       ask_inputs.push_back({static_cast<int>(i), books_[i].asks.levels()});
@@ -155,6 +163,10 @@ void Engine::Publish() {
     clock.name = name;
     clock.last_recv_ts_ns = last_recv_ns_[i];
     clock.last_exchange_ts_ns = last_exchange_ns_[i];
+    clock.bid_levels = static_cast<int>(books_[i].bids.size());
+    clock.ask_levels = static_cast<int>(books_[i].asks.size());
+    clock.best_bid = books_[i].bids.BestPx();
+    clock.best_ask = books_[i].asks.BestPx();
     book->clocks.push_back(std::move(clock));
   }
 
@@ -163,6 +175,23 @@ void Engine::Publish() {
   limits.max_bps_from_touch_e8 = static_cast<std::int64_t>(config_.max_publish_bps) * kScale;
   book->bids_truncated = MergeSide(true, bid_inputs, limits, &book->bids);
   book->asks_truncated = MergeSide(false, ask_inputs, limits, &book->asks);
+
+  // Who is at the touch, read straight off the venue books. Three comparisons
+  // per side, rather than 24 bytes of attribution on every published level.
+  const Px best_bid = book->bids.empty() ? 0 : book->bids.front().px;
+  const Px best_ask = book->asks.empty() ? 0 : book->asks.front().px;
+  for (const VenueSideInput& input : bid_inputs) {
+    const VenueBook& venue_book = books_[input.venue_index];
+    if (best_bid != 0 && venue_book.bids.BestPx() == best_bid) {
+      book->bid_touch.push_back({venues_[input.venue_index].name, venue_book.bids.BestQty()});
+    }
+  }
+  for (const VenueSideInput& input : ask_inputs) {
+    const VenueBook& venue_book = books_[input.venue_index];
+    if (best_ask != 0 && venue_book.asks.BestPx() == best_ask) {
+      book->ask_touch.push_back({venues_[input.venue_index].name, venue_book.asks.BestQty()});
+    }
+  }
 
   if (newest_recv_ns_ != 0) RecordLatency(now_steady - newest_recv_ns_);
 

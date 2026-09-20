@@ -1,6 +1,6 @@
 {
-  "name": "venue_filter_unfiltered_baseline",
-  "description": "The venue_filter_binance_okx book with no filter applied, so a test can assert the filtered view is a strict re-derivation of this one and that qty_total equals the sum of by_venue at every level.",
+  "name": "stale_venue_excluded",
+  "description": "Same book with bybit excluded, which is what the engine does when a venue goes stale: it is simply not a merge input. bybit sets the touch on both sides here, so removing it must MOVE the touch rather than merely reduce a quantity -- and it un-crosses the book.",
   "instrument": "BTCUSDT",
   "scale": {
     "price_e8": 100000000,
@@ -59,7 +59,10 @@
         ]
       }
     },
-    "venue_filter": null,
+    "venue_filter": [
+      "binance",
+      "okx"
+    ],
     "merge_depth": null
   },
   "request": {
@@ -80,68 +83,38 @@
   },
   "expected": {
     "touch": {
-      "best_bid_e8": 10000050000000,
+      "best_bid_e8": 10000000000000,
       "best_ask_e8": 10000050000000,
-      "mid_price_e8": 10000050000000,
-      "spread_e8": 0,
-      "spread_bps_e8": 0,
-      "crossed": true,
+      "mid_price_e8": 10000025000000,
+      "spread_e8": 50000000,
+      "spread_bps_e8": 4999987,
+      "crossed": false,
       "has_bid": true,
       "has_ask": true
     },
     "merged": {
       "bids": [
         {
-          "px_e8": 10000050000000,
-          "qty_total_e8": 900000000,
-          "by_venue": {
-            "bybit": 900000000
-          }
-        },
-        {
           "px_e8": 10000000000000,
-          "qty_total_e8": 600000000,
-          "by_venue": {
-            "binance": 100000000,
-            "okx": 500000000
-          }
+          "qty_total_e8": 600000000
         },
         {
           "px_e8": 9999900000000,
-          "qty_total_e8": 200000000,
-          "by_venue": {
-            "binance": 200000000
-          }
+          "qty_total_e8": 200000000
         },
         {
           "px_e8": 9999800000000,
-          "qty_total_e8": 700000000,
-          "by_venue": {
-            "okx": 700000000
-          }
+          "qty_total_e8": 700000000
         }
       ],
       "asks": [
         {
           "px_e8": 10000050000000,
-          "qty_total_e8": 300000000,
-          "by_venue": {
-            "okx": 300000000
-          }
-        },
-        {
-          "px_e8": 10000075000000,
-          "qty_total_e8": 400000000,
-          "by_venue": {
-            "bybit": 400000000
-          }
+          "qty_total_e8": 300000000
         },
         {
           "px_e8": 10000100000000,
-          "qty_total_e8": 100000000,
-          "by_venue": {
-            "binance": 100000000
-          }
+          "qty_total_e8": 100000000
         }
       ]
     },
@@ -149,124 +122,124 @@
       "bid": [
         {
           "notional_target_e8": 100000000000000,
-          "vwap_price_e8": 10000045000202,
-          "worst_price_e8": 10000000000000,
-          "filled_qty_e8": 999995500,
-          "filled_notional_e8": 100000000000000,
+          "vwap_price_e8": 9999939999160,
+          "worst_price_e8": 9999800000000,
+          "filled_qty_e8": 1000006000,
+          "filled_notional_e8": 99999999988000,
           "fully_filled": true,
-          "levels_consumed": 2,
+          "levels_consumed": 3,
           "open_ended": false
         },
         {
           "notional_target_e8": 500000000000000,
-          "vwap_price_e8": 9999952083333,
+          "vwap_price_e8": 9999893333333,
           "worst_price_e8": 9999800000000,
-          "filled_qty_e8": 2400000000,
-          "filled_notional_e8": 239998850000000,
+          "filled_qty_e8": 1500000000,
+          "filled_notional_e8": 149998400000000,
           "fully_filled": false,
-          "levels_consumed": 4,
+          "levels_consumed": 3,
           "open_ended": false
         },
         {
           "notional_target_e8": 1000000000000000,
-          "vwap_price_e8": 9999952083333,
+          "vwap_price_e8": 9999893333333,
           "worst_price_e8": 9999800000000,
-          "filled_qty_e8": 2400000000,
-          "filled_notional_e8": 239998850000000,
+          "filled_qty_e8": 1500000000,
+          "filled_notional_e8": 149998400000000,
           "fully_filled": false,
-          "levels_consumed": 4,
+          "levels_consumed": 3,
           "open_ended": false
         },
         {
           "notional_target_e8": 2500000000000000,
-          "vwap_price_e8": 9999952083333,
+          "vwap_price_e8": 9999893333333,
           "worst_price_e8": 9999800000000,
-          "filled_qty_e8": 2400000000,
-          "filled_notional_e8": 239998850000000,
+          "filled_qty_e8": 1500000000,
+          "filled_notional_e8": 149998400000000,
           "fully_filled": false,
-          "levels_consumed": 4,
+          "levels_consumed": 3,
           "open_ended": false
         },
         {
           "notional_target_e8": 5000000000000000,
-          "vwap_price_e8": 9999952083333,
+          "vwap_price_e8": 9999893333333,
           "worst_price_e8": 9999800000000,
-          "filled_qty_e8": 2400000000,
-          "filled_notional_e8": 239998850000000,
+          "filled_qty_e8": 1500000000,
+          "filled_notional_e8": 149998400000000,
           "fully_filled": false,
-          "levels_consumed": 4,
+          "levels_consumed": 3,
           "open_ended": false
         },
         {
           "notional_target_e8": 0,
-          "vwap_price_e8": 9999952083333,
+          "vwap_price_e8": 9999893333333,
           "worst_price_e8": 9999800000000,
-          "filled_qty_e8": 2400000000,
-          "filled_notional_e8": 239998850000000,
+          "filled_qty_e8": 1500000000,
+          "filled_notional_e8": 149998400000000,
           "fully_filled": false,
-          "levels_consumed": 4,
+          "levels_consumed": 3,
           "open_ended": true
         }
       ],
       "ask": [
         {
           "notional_target_e8": 100000000000000,
-          "vwap_price_e8": 10000068750000,
+          "vwap_price_e8": 10000062500000,
           "worst_price_e8": 10000100000000,
-          "filled_qty_e8": 800000000,
-          "filled_notional_e8": 80000550000000,
+          "filled_qty_e8": 400000000,
+          "filled_notional_e8": 40000250000000,
           "fully_filled": false,
-          "levels_consumed": 3,
+          "levels_consumed": 2,
           "open_ended": false
         },
         {
           "notional_target_e8": 500000000000000,
-          "vwap_price_e8": 10000068750000,
+          "vwap_price_e8": 10000062500000,
           "worst_price_e8": 10000100000000,
-          "filled_qty_e8": 800000000,
-          "filled_notional_e8": 80000550000000,
+          "filled_qty_e8": 400000000,
+          "filled_notional_e8": 40000250000000,
           "fully_filled": false,
-          "levels_consumed": 3,
+          "levels_consumed": 2,
           "open_ended": false
         },
         {
           "notional_target_e8": 1000000000000000,
-          "vwap_price_e8": 10000068750000,
+          "vwap_price_e8": 10000062500000,
           "worst_price_e8": 10000100000000,
-          "filled_qty_e8": 800000000,
-          "filled_notional_e8": 80000550000000,
+          "filled_qty_e8": 400000000,
+          "filled_notional_e8": 40000250000000,
           "fully_filled": false,
-          "levels_consumed": 3,
+          "levels_consumed": 2,
           "open_ended": false
         },
         {
           "notional_target_e8": 2500000000000000,
-          "vwap_price_e8": 10000068750000,
+          "vwap_price_e8": 10000062500000,
           "worst_price_e8": 10000100000000,
-          "filled_qty_e8": 800000000,
-          "filled_notional_e8": 80000550000000,
+          "filled_qty_e8": 400000000,
+          "filled_notional_e8": 40000250000000,
           "fully_filled": false,
-          "levels_consumed": 3,
+          "levels_consumed": 2,
           "open_ended": false
         },
         {
           "notional_target_e8": 5000000000000000,
-          "vwap_price_e8": 10000068750000,
+          "vwap_price_e8": 10000062500000,
           "worst_price_e8": 10000100000000,
-          "filled_qty_e8": 800000000,
-          "filled_notional_e8": 80000550000000,
+          "filled_qty_e8": 400000000,
+          "filled_notional_e8": 40000250000000,
           "fully_filled": false,
-          "levels_consumed": 3,
+          "levels_consumed": 2,
           "open_ended": false
         },
         {
           "notional_target_e8": 0,
-          "vwap_price_e8": 10000068750000,
+          "vwap_price_e8": 10000062500000,
           "worst_price_e8": 10000100000000,
-          "filled_qty_e8": 800000000,
-          "filled_notional_e8": 80000550000000,
+          "filled_qty_e8": 400000000,
+          "filled_notional_e8": 40000250000000,
           "fully_filled": false,
-          "levels_consumed": 3,
+          "levels_consumed": 2,
           "open_ended": true
         }
       ]
@@ -275,61 +248,61 @@
       "bid": [
         {
           "offset_bps_e8": 5000000000,
-          "bound_price_e8": 9950049750000,
-          "qty_e8": 2400000000,
-          "notional_e8": 239998850000000,
-          "vwap_price_e8": 9999952083333,
-          "levels": 4,
+          "bound_price_e8": 9950000000000,
+          "qty_e8": 1500000000,
+          "notional_e8": 149998400000000,
+          "vwap_price_e8": 9999893333333,
+          "levels": 3,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 10000000000,
-          "bound_price_e8": 9900049500000,
-          "qty_e8": 2400000000,
-          "notional_e8": 239998850000000,
-          "vwap_price_e8": 9999952083333,
-          "levels": 4,
+          "bound_price_e8": 9900000000000,
+          "qty_e8": 1500000000,
+          "notional_e8": 149998400000000,
+          "vwap_price_e8": 9999893333333,
+          "levels": 3,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 20000000000,
-          "bound_price_e8": 9800049000000,
-          "qty_e8": 2400000000,
-          "notional_e8": 239998850000000,
-          "vwap_price_e8": 9999952083333,
-          "levels": 4,
+          "bound_price_e8": 9800000000000,
+          "qty_e8": 1500000000,
+          "notional_e8": 149998400000000,
+          "vwap_price_e8": 9999893333333,
+          "levels": 3,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 50000000000,
-          "bound_price_e8": 9500047500000,
-          "qty_e8": 2400000000,
-          "notional_e8": 239998850000000,
-          "vwap_price_e8": 9999952083333,
-          "levels": 4,
+          "bound_price_e8": 9500000000000,
+          "qty_e8": 1500000000,
+          "notional_e8": 149998400000000,
+          "vwap_price_e8": 9999893333333,
+          "levels": 3,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 100000000000,
-          "bound_price_e8": 9000045000000,
-          "qty_e8": 2400000000,
-          "notional_e8": 239998850000000,
-          "vwap_price_e8": 9999952083333,
-          "levels": 4,
+          "bound_price_e8": 9000000000000,
+          "qty_e8": 1500000000,
+          "notional_e8": 149998400000000,
+          "vwap_price_e8": 9999893333333,
+          "levels": 3,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 0,
           "bound_price_e8": 9999800000000,
-          "qty_e8": 2400000000,
-          "notional_e8": 239998850000000,
-          "vwap_price_e8": 9999952083333,
-          "levels": 4,
+          "qty_e8": 1500000000,
+          "notional_e8": 149998400000000,
+          "vwap_price_e8": 9999893333333,
+          "levels": 3,
           "open_ended": true,
           "depth_limited": false
         }
@@ -338,60 +311,60 @@
         {
           "offset_bps_e8": 5000000000,
           "bound_price_e8": 10050050250000,
-          "qty_e8": 800000000,
-          "notional_e8": 80000550000000,
-          "vwap_price_e8": 10000068750000,
-          "levels": 3,
+          "qty_e8": 400000000,
+          "notional_e8": 40000250000000,
+          "vwap_price_e8": 10000062500000,
+          "levels": 2,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 10000000000,
           "bound_price_e8": 10100050500000,
-          "qty_e8": 800000000,
-          "notional_e8": 80000550000000,
-          "vwap_price_e8": 10000068750000,
-          "levels": 3,
+          "qty_e8": 400000000,
+          "notional_e8": 40000250000000,
+          "vwap_price_e8": 10000062500000,
+          "levels": 2,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 20000000000,
           "bound_price_e8": 10200051000000,
-          "qty_e8": 800000000,
-          "notional_e8": 80000550000000,
-          "vwap_price_e8": 10000068750000,
-          "levels": 3,
+          "qty_e8": 400000000,
+          "notional_e8": 40000250000000,
+          "vwap_price_e8": 10000062500000,
+          "levels": 2,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 50000000000,
           "bound_price_e8": 10500052500000,
-          "qty_e8": 800000000,
-          "notional_e8": 80000550000000,
-          "vwap_price_e8": 10000068750000,
-          "levels": 3,
+          "qty_e8": 400000000,
+          "notional_e8": 40000250000000,
+          "vwap_price_e8": 10000062500000,
+          "levels": 2,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 100000000000,
           "bound_price_e8": 11000055000000,
-          "qty_e8": 800000000,
-          "notional_e8": 80000550000000,
-          "vwap_price_e8": 10000068750000,
-          "levels": 3,
+          "qty_e8": 400000000,
+          "notional_e8": 40000250000000,
+          "vwap_price_e8": 10000062500000,
+          "levels": 2,
           "open_ended": false,
           "depth_limited": true
         },
         {
           "offset_bps_e8": 0,
           "bound_price_e8": 10000100000000,
-          "qty_e8": 800000000,
-          "notional_e8": 80000550000000,
-          "vwap_price_e8": 10000068750000,
-          "levels": 3,
+          "qty_e8": 400000000,
+          "notional_e8": 40000250000000,
+          "vwap_price_e8": 10000062500000,
+          "levels": 2,
           "open_ended": true,
           "depth_limited": false
         }
@@ -399,9 +372,10 @@
     }
   },
   "properties": {
-    "max_px_times_qty_intermediate": "9000045000000000000000",
+    "max_px_times_qty_intermediate": "6999860000000000000000",
     "overflows_int64_if_naive": true,
-    "bid_levels": 4,
-    "ask_levels": 3
-  }
+    "bid_levels": 3,
+    "ask_levels": 2
+  },
+  "notes": "With all three venues the touch is bybit 100000.50 / 100000.75 and the book is crossed. Excluding bybit moves the touch to 100000.00 / 100000.50 and un-crosses it."
 }

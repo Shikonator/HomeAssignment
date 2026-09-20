@@ -27,7 +27,6 @@ namespace md {
 struct ClientOptions {
   std::string server = "localhost:50051";
   std::string instrument;
-  std::string venues;
   std::uint32_t min_interval_micros = 0;
   bool json = false;
   int max_updates = 0;  // 0 = run forever; used by the end-to-end tests
@@ -37,8 +36,8 @@ struct ClientOptions {
 // two of them take.
 inline void RequireKnownClientFlags(const Flags& flags,
                                     std::initializer_list<std::string_view> extra = {}) {
-  std::vector<std::string_view> known{"server",  "instrument", "venues", "min-interval-us",
-                                      "json",    "max-updates", "quiet"};
+  std::vector<std::string_view> known{"server", "instrument", "min-interval-us",
+                                      "json",   "max-updates", "quiet"};
   known.insert(known.end(), extra.begin(), extra.end());
   flags.RequireKnown(std::span<const std::string_view>(known));
 }
@@ -47,7 +46,6 @@ inline ClientOptions ParseClientOptions(const Flags& flags) {
   ClientOptions options;
   options.server = flags.Get("server", options.server);
   options.instrument = flags.Get("instrument", "");
-  options.venues = flags.Get("venues", "");
   // Bounded before the unsigned cast, which would otherwise launder a negative
   // into an enormous positive: -1 becomes 4,294,967,295 microseconds, or 71
   // minutes between updates, and the client merely looks hung.
@@ -77,7 +75,6 @@ inline std::vector<std::string> SplitCsv(const std::string& text) {
 inline void FillSubscription(const ClientOptions& options, v1::Subscription* subscription) {
   if (!options.instrument.empty()) subscription->set_instrument(options.instrument);
   subscription->set_min_interval_micros(options.min_interval_micros);
-  for (const std::string& venue : SplitCsv(options.venues)) subscription->add_venues(venue);
 }
 
 // Waits for the aggregator to come up rather than exiting on a connection

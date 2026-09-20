@@ -4,7 +4,6 @@
 #include <boost/asio/post.hpp>
 
 #include <algorithm>
-#include <cstdio>
 #include <utility>
 
 #include "src/common/log.h"
@@ -12,33 +11,6 @@
 
 namespace md {
 namespace {
-
-// Minimal JSON string escaping, for the frame recorder. Frames are stored as
-// JSON STRINGS rather than embedded objects so that a single oversized integer
-// literal somewhere in a venue payload cannot make a strict reader reject the
-// whole recording.
-std::string JsonEscape(std::string_view in) {
-  std::string out;
-  out.reserve(in.size() + 16);
-  for (const char c : in) {
-    switch (c) {
-      case '"': out += "\\\""; break;
-      case '\\': out += "\\\\"; break;
-      case '\n': out += "\\n"; break;
-      case '\r': out += "\\r"; break;
-      case '\t': out += "\\t"; break;
-      default:
-        if (static_cast<unsigned char>(c) < 0x20) {
-          char buffer[8];
-          std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
-          out += buffer;
-        } else {
-          out.push_back(c);
-        }
-    }
-  }
-  return out;
-}
 
 }  // namespace
 
@@ -54,9 +26,6 @@ VenueRunner::VenueRunner(int venue_index, std::unique_ptr<VenueProtocol> protoco
       backoff_(options_.reconnect_initial, options_.reconnect_max),
       resync_budget_(options_.max_resyncs_per_minute, std::chrono::minutes(1)),
       last_activity_(std::chrono::steady_clock::now()) {
-  if (!options_.record_path.empty()) {
-    recorder_.open(options_.record_path, std::ios::out | std::ios::trunc);
-  }
 }
 
 VenueRunner::~VenueRunner() { Stop(); }
@@ -82,7 +51,6 @@ void VenueRunner::Stop() {
     io_.stop();
   });
   if (thread_.joinable()) thread_.join();
-  if (recorder_.is_open()) recorder_.close();
 }
 
 void VenueRunner::SetState(VenueState state) {
@@ -171,7 +139,6 @@ void VenueRunner::FetchSnapshot() {
             }
             Log(protocol_->name().data(), "rest snapshot received");
             const std::int64_t recv = SteadyNowNs();
-            Record(recv, body, /*is_rest_snapshot=*/true);
             scratch_.clear();
             const FrameVerdict verdict = protocol_->OnRestSnapshot(body, recv, &scratch_);
             if (verdict != FrameVerdict::kOk) {
@@ -192,7 +159,6 @@ void VenueRunner::OnFrame(std::string_view frame) {
   last_activity_ = std::chrono::steady_clock::now();
   stats_.messages.fetch_add(1, std::memory_order_relaxed);
   stats_.last_recv_ts_ns.store(recv, std::memory_order_relaxed);
-  Record(recv, frame, /*is_rest_snapshot=*/false);
 
   scratch_.clear();
   const FrameVerdict verdict = protocol_->OnFrame(frame, recv, &scratch_);
@@ -284,13 +250,6 @@ void VenueRunner::ScheduleReconnect() {
 
 bool VenueRunner::ConsumeResyncToken() {
   return resync_budget_.TryConsume(std::chrono::steady_clock::now());
-}
-
-void VenueRunner::Record(std::int64_t recv_ts_ns, std::string_view frame, bool is_rest_snapshot) {
-  if (!recorder_.is_open()) return;
-  recorder_ << R"({"recv_ts_ns":)" << recv_ts_ns << R"(,"kind":")"
-            << (is_rest_snapshot ? "rest_snapshot" : "ws_frame") << R"(","frame":")"
-            << JsonEscape(frame) << "\"}\n";
 }
 
 }  // namespace md
