@@ -12,27 +12,17 @@
 
 namespace md {
 
-// Minimal --key=value command-line parser.
-//
-// Hand-rolled rather than pulling in a flags library: the whole surface is a
-// handful of strings and integers, and each service's flags stay visible in one
-// place in its main() instead of being scattered across translation units as
-// global registrations.
-//
-// What it will NOT do is fail quietly. The operator surface is the one a
-// reviewer actually types into, and it validates as strictly as the gRPC
-// surface does -- for the same reason stated there: a typo must never be
-// silently ignored, or the operator gets a plausible system built from
-// configuration they did not ask for.
+// Minimal --key=value parser that never fails quietly. A typo must not be
+// silently ignored, or the operator gets a system built from configuration
+// they did not ask for.
 class Flags {
  public:
   Flags(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
       std::string argument(argv[i]);
       if (argument.rfind("--", 0) != 0) {
-        // A bare word. Almost always a space-separated value -- `--foo 5`
-        // instead of `--foo=5` -- which would otherwise be dropped on the floor
-        // while `foo` silently became the string "true".
+        // Almost always `--foo 5` instead of `--foo=5`, which would otherwise
+        // be dropped while `foo` silently became "true".
         Fail("unexpected argument '" + argument +
              "'; flags take the form --key=value, not --key value");
       }
@@ -46,9 +36,8 @@ class Flags {
     }
   }
 
-  // Rejects any flag the caller does not recognise. Each main() already lists
-  // its flags in --help, so this is that list used twice rather than a second
-  // source of truth.
+  // The list comes from each main()'s --help text, used twice rather than
+  // duplicated.
   void RequireKnown(std::span<const std::string_view> known) const {
     for (const auto& [key, value] : values_) {
       bool found = false;
@@ -73,11 +62,9 @@ class Flags {
     return it == values_.end() ? fallback : it->second;
   }
 
-  // Range-checked. A type check catches malformed input; a range check catches
-  // input that parses fine and is still wrong, which this program punishes just
-  // as hard -- a negative staleness timeout parses perfectly and then excludes
-  // every venue from the merge forever. Every integer flag goes through the
-  // bounded form for that reason.
+  // A type check catches malformed input; a range check catches input that
+  // parses fine and is still wrong. --staleness-ms=-1 parses perfectly and
+  // then excludes every venue from the merge forever.
   int GetInt(const std::string& key, int fallback, int minimum, int maximum) const {
     const int value = GetInt(key, fallback);
     if (value < minimum || value > maximum) {
@@ -91,11 +78,8 @@ class Flags {
     const auto it = values_.find(key);
     if (it == values_.end()) return fallback;
 
-    // Rejects both malformed input and the bare `--key` form, which stores
-    // "true". Silently yielding 0 here is how `--staleness-ms 5000` used to
-    // produce a zero timeout, which excludes every venue from the merge
-    // permanently while every venue is plainly healthy -- a visible symptom
-    // with an invisible cause.
+    // Also rejects the bare `--key` form, which stores "true". Yielding 0
+    // silently is how `--staleness-ms 5000` produced a zero timeout.
     int parsed = 0;
     const std::string& text = it->second;
     const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), parsed);

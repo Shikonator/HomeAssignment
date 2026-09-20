@@ -9,17 +9,13 @@
 
 namespace md {
 
-// One-deep mailbox keeping only the newest value: the aggregator -> subscriber
-// hand-off. A slow subscriber loses resolution and nothing else -- it never
-// back-pressures the book writer or slows another subscriber. Sound because
-// every published value is ABSOLUTE state, not a delta.
-//
-// The mutex holds only a pointer swap. std::atomic<shared_ptr> is not lock-free
-// on libstdc++ either, so there is no lock-free win available at this rate.
+// One-deep mailbox keeping only the newest value. A slow subscriber loses
+// resolution and nothing else: it never back-pressures the book writer.
+// Sound because every published value is ABSOLUTE state, not a delta.
 template <typename T>
 class ConflatingSlot {
  public:
-  // Never blocks. Returns false if the slot is stopped.
+  // Never blocks. False if stopped.
   bool Publish(std::shared_ptr<const T> value) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -32,7 +28,7 @@ class ConflatingSlot {
     return true;
   }
 
-  // Blocks until a value arrives or the slot stops. nullptr once drained.
+  // nullptr once stopped and drained.
   std::shared_ptr<const T> WaitNext() {
     std::unique_lock<std::mutex> lock(mutex_);
     // Predicate form: immune to spurious wakeups and lost notifies.
@@ -41,10 +37,9 @@ class ConflatingSlot {
     return std::exchange(pending_, nullptr);
   }
 
-  // Bounded wait; nullptr on timeout or stop. Stop() is process-wide but RPC
-  // cancellation is per subscriber, and the sync gRPC server cannot interrupt a
-  // thread parked in user code -- so an unbounded wait leaks a handler thread
-  // whenever a client disconnects while the book is quiet.
+  // Bounded, because Stop() is process-wide but RPC cancellation is per
+  // subscriber: an unbounded wait leaks a handler thread whenever a client
+  // disconnects while the book is quiet.
   std::shared_ptr<const T> WaitNextFor(std::chrono::milliseconds timeout) {
     std::unique_lock<std::mutex> lock(mutex_);
     ready_.wait_for(lock, timeout, [this] { return pending_ != nullptr || stopped_; });
@@ -66,7 +61,7 @@ class ConflatingSlot {
     return stopped_;
   }
 
-  // Number of states this subscriber never saw because it was too slow.
+  // States this subscriber never saw because it was too slow.
   std::uint64_t conflated() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return conflated_;

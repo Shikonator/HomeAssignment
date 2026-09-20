@@ -22,48 +22,33 @@
 
 namespace md {
 
-// Builds a client TLS context. `ca_file` empty means "use the system trust
-// store". Verification is always on: disabling it to make a handshake work is
-// the kind of thing a reviewer greps for, and it would also make the aggregator
-// trivially interceptable.
+// Empty `ca_file` uses the system trust store. Verification is always on.
 boost::asio::ssl::context MakeTlsContext(const std::string& ca_file);
 
-// Asynchronous WebSocket client. One per venue connection.
+// Asynchronous WebSocket client, one per venue connection.
 //
-// EVERYTHING runs on the single thread driving the io_context: the read loop,
-// the write queue, and the keepalive timer. That is the entire reason this is
-// async rather than a blocking read on one thread with a timer on another.
-//
-// Beast documents that one concurrent read and one concurrent write are safe --
-// but that exemption belongs to basic_stream_socket and does NOT pass through
-// ssl::stream, which is documented "Shared objects: Unsafe" with no carve-out.
-// Underneath, concurrent SSL_read/SSL_write touch the same record-layer state,
-// and either direction can need to write on its own for a renegotiation, key
-// update or alert. All three venues are WSS, so a read-thread-plus-ping-thread
-// design would corrupt the TLS stream rarely, under load, and present as "the
-// exchange disconnected us" -- the single most plausible-looking symptom in the
-// system and the last place anyone would look.
+// EVERYTHING runs on the one thread driving the io_context, and that is the
+// whole reason this is async. Beast's "one concurrent read and one concurrent
+// write is safe" belongs to basic_stream_socket and does NOT pass through
+// ssl::stream. All three venues are WSS, so a read-thread-plus-ping-thread
+// design would corrupt TLS under load and present as a venue disconnect.
 class WsConnection : public std::enable_shared_from_this<WsConnection> {
  public:
   struct Callbacks {
     std::function<void()> on_open;
     std::function<void(std::string_view)> on_frame;
-    // Delivered exactly once per connection, with a human-readable reason.
+    // Delivered exactly once per connection.
     std::function<void(const std::string&)> on_close;
   };
 
   WsConnection(boost::asio::io_context& io, boost::asio::ssl::context& tls, Callbacks callbacks);
 
-  // Resolves, connects, handshakes, then reads until closed or failed.
   void Open(const std::string& url);
 
-  // Queues a text frame. Safe to call before the handshake completes; frames
-  // are flushed in order once open.
+  // Safe before the handshake; queued frames flush in order once open.
   void Send(std::string payload);
 
-  // Sends `payload` every `interval`, unconditionally. See
-  // VenueProtocol::keepalive_interval for why this is not conditioned on the
-  // connection being idle.
+  // Unconditional, not idle-gated. See VenueProtocol::keepalive_interval.
   void StartKeepalive(std::string payload, std::chrono::seconds interval);
 
   void Close();
@@ -91,8 +76,7 @@ class WsConnection : public std::enable_shared_from_this<WsConnection> {
   void Fail(boost::beast::error_code ec, const char* stage);
   void Finish(const std::string& reason);
 
-  // Applies `f` to whichever stream variant is live. Does nothing when there is
-  // no stream yet.
+  // Applies `f` to whichever stream variant is live.
   template <typename F>
   void WithStream(F&& f) {
     if (auto* plain = std::get_if<PlainStream>(&stream_)) {

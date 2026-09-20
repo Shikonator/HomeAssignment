@@ -17,8 +17,7 @@
 
 namespace md {
 
-// Each subscriber owns one of these. See ConflatingSlot for why overwriting is
-// the right policy in this direction and the wrong one upstream.
+// One per subscriber.
 using BookSlot = ConflatingSlot<ConsolidatedBook>;
 
 struct LatencySummary {
@@ -28,10 +27,8 @@ struct LatencySummary {
   std::uint64_t count = 0;
 };
 
-// What the engine needs from a venue: a name, a way to read its health, and a
-// ring to drain. Deliberately NOT a VenueRunner -- the engine has no business
-// knowing about sockets or reconnection, and this way the engine can be tested
-// by pushing batches straight into a ring with no network at all.
+// Deliberately not a VenueRunner: the engine has no business knowing about
+// sockets, and this way it is testable by pushing batches into a ring.
 struct VenueFeed {
   std::string name;
   std::string venue_symbol;
@@ -42,36 +39,27 @@ struct VenueFeed {
 struct EngineConfig {
   std::string instrument = "BTCUSDT";
 
-  // How far from the touch the published ladder extends, in bps. This is the
-  // bound that makes published numbers reproducible: see MergeLimits for why an
-  // unbounded ladder makes every derived figure depend on process uptime.
-  //
-  // 500 bps is generous for BTCUSDT, where a REST snapshot spans about 100.
+  // The bound that makes published numbers reproducible; see MergeLimits.
+  // Generous for BTCUSDT, where a REST snapshot spans about 100 bps.
   int max_publish_bps = 500;
 
-  // Hard backstop on level count. The venue books are kept full-depth
-  // internally; this only bounds what goes on the wire.
+  // Backstop only; venue books stay full-depth internally.
   int max_publish_levels = 8192;
 
-  // A venue silent for longer than this is excluded from the merge. Measured on
-  // LOCAL receive time; an exchange's own clock is not ours to trust.
+  // Excluded from the merge past this. Measured on LOCAL receive time.
   std::chrono::milliseconds staleness_timeout{5000};
 
   // How long the aggregation thread sleeps when every ring is empty.
   std::chrono::microseconds idle_poll{200};
 
-  // Republish at least this often even with no inbound data, so that venue
-  // staleness and a fully-empty book are observable by subscribers rather than
-  // merely representable. Costs one snapshot per interval on an idle book.
+  // Republish even with no inbound data, so staleness and an empty book are
+  // observable rather than merely representable.
   std::chrono::milliseconds heartbeat_interval{1000};
 };
 
-// Owns the consolidated book.
-//
-// Exactly ONE thread ever touches the venue books: this engine's. Venue threads
-// only parse and hand deltas over a lock-free ring, so the expensive work
-// (JSON) happens in parallel while the book itself needs no synchronisation at
-// all. Publication produces an immutable snapshot that subscribers share.
+// Owns the consolidated book. Exactly ONE thread touches the venue books:
+// this one. Venue threads only parse and hand deltas over a ring, so the
+// expensive work happens in parallel and the books need no synchronisation.
 class Engine {
  public:
   Engine(EngineConfig config, std::vector<VenueFeed> venues);
@@ -86,8 +74,7 @@ class Engine {
   std::shared_ptr<BookSlot> AddSubscriber();
   void RemoveSubscriber(const std::shared_ptr<BookSlot>& slot);
 
-  // Most recent published state, for unary calls and for a subscriber's first
-  // message so it does not have to wait for the next tick.
+  // Lets a new subscriber get a message without waiting for the next tick.
   std::shared_ptr<const ConsolidatedBook> Latest() const;
 
   LatencySummary Latency() const;

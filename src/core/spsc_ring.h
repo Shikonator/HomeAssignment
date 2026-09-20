@@ -7,29 +7,19 @@
 
 namespace md {
 
-// Bounded single-producer / single-consumer queue.
+// Bounded single-producer / single-consumer queue. One venue thread produces,
+// the aggregator consumes, so each side owns one index and no CAS is needed.
 //
-// One venue thread produces, the aggregator thread consumes, so no CAS is
-// required: each side owns one index and publishes it with a release store the
-// other side acquires. The two indices sit on separate cache lines, because
-// sharing one line would make every producer store invalidate the consumer's
-// copy and vice versa -- the classic false-sharing stall that makes a "lock
-// free" queue slower than a mutex.
-//
-// FULLNESS POLICY IS THE CALLER'S. This queue only reports failure. It must
-// never silently drop, because what flows through it are book DELTAS: losing
-// one corrupts the book permanently and undetectably. The venue runner's
-// response to a failed Push is to discard the batch and force a full resync,
-// which is always safe. This is the exact opposite of the aggregator -> client
-// direction, where messages carry absolute state and dropping them is both safe
-// and desirable.
+// NEVER MAKE THIS DROP ON OVERFLOW. It carries book DELTAS, and losing one
+// corrupts the book permanently and undetectably. Push reports failure and the
+// caller resyncs. (The aggregator -> subscriber direction is the opposite: that
+// carries absolute state, so dropping is both safe and desirable.)
 template <typename T>
 class SpscRing {
  public:
   explicit SpscRing(std::size_t capacity)
       : capacity_(RoundUpPow2(capacity)), mask_(capacity_ - 1), slots_(capacity_) {}
 
-  // Producer side only.
   bool Push(T&& value) {
     const std::size_t head = head_.load(std::memory_order_relaxed);
     if (head - tail_.load(std::memory_order_acquire) >= capacity_) return false;
@@ -38,7 +28,6 @@ class SpscRing {
     return true;
   }
 
-  // Consumer side only.
   bool Pop(T* out) {
     const std::size_t tail = tail_.load(std::memory_order_relaxed);
     if (tail == head_.load(std::memory_order_acquire)) return false;

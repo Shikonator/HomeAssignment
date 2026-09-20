@@ -22,11 +22,11 @@ inline constexpr std::int64_t kMaxIntegerPart = INT64_MAX / kScale;
 // Every such product goes through the helpers below, never a bare `*`.
 using Wide = __int128;
 
-// Decimal string -> 1e8-scaled integer, no floating point. Digits past the 8th
-// truncate. False on empty input, trailing garbage, exponents, or overflow.
+// No floating point. Digits past the 8th truncate. False on empty input,
+// trailing garbage, exponents, or overflow.
 bool ParseFixed(std::string_view s, std::int64_t* out);
 
-// Renders scaled -> decimal string, keeping at least `min_decimals` places.
+// Keeps at least `min_decimals` places.
 std::string FormatFixed(std::int64_t v, int min_decimals = 2);
 
 // Asserts in debug, saturates in release: a silent clamp would turn a real
@@ -39,7 +39,6 @@ inline std::int64_t NarrowSaturating(Wide v) {
   return static_cast<std::int64_t>(v);
 }
 
-// notional = price * qty, in quote currency at the same scale.
 inline Wide NotionalWide(Px px, Qty qty) {
   return (static_cast<Wide>(px) * qty) / kScale;
 }
@@ -47,26 +46,23 @@ inline Notional NotionalE8(Px px, Qty qty) {
   return NarrowSaturating(NotionalWide(px, qty));
 }
 
-// Quantity to consume `notional_e8` at `px`. Truncates, so a sweep never
-// claims more fill than exists.
+// Truncates, so a sweep never claims more fill than exists.
 inline Qty QtyForNotional(Wide notional_e8, Px px) {
   if (px <= 0 || notional_e8 <= 0) return 0;
   return NarrowSaturating((notional_e8 * kScale) / px);
 }
 
-// Quantity-weighted average price = notional / qty.
 inline Px Vwap(Wide notional_e8, Wide qty_e8) {
   if (qty_e8 <= 0) return 0;
   return NarrowSaturating((notional_e8 * kScale) / qty_e8);
 }
 
-// Basis points of `delta` relative to `reference`, scaled by 1e8. Signed.
+// Signed.
 inline std::int64_t BpsE8(std::int64_t delta, Px reference) {
   if (reference <= 0) return 0;
   return NarrowSaturating((static_cast<Wide>(delta) * 10000 * kScale) / reference);
 }
 
-// bps are scaled by 1e8 like everything else.
 inline constexpr Wide kBpsScale = Wide(10000) * kScale;
 
 // `offset_bps_e8` away from `reference`, rounded OUTWARD on both sides so a

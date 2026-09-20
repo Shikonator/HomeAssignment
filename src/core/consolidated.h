@@ -12,10 +12,8 @@
 
 namespace md {
 
-// Compile-time venue capacity. 4 rather than 3 so one more fits without
-// changing the published layout; not larger because every slot costs 8 bytes on
-// every level. Raising it is a one-constant change and the aggregator refuses
-// to start if it is exceeded.
+// 4 rather than 3 so one more fits; not larger because every slot costs 8
+// bytes on every published level. The aggregator refuses to start if exceeded.
 inline constexpr int kMaxVenues = 4;
 
 using VenueMask = std::uint32_t;
@@ -24,8 +22,7 @@ inline constexpr VenueMask MaskOf(int venue_index) {
   return VenueMask{1} << venue_index;
 }
 
-// One consolidated price level, carrying which venue supplied what. The
-// per-venue array is not overhead for the optional venue filter -- staleness
+// The per-venue array is not overhead for the venue filter: staleness
 // exclusion is the identical operation, so the filter is free.
 struct MergedLevel {
   Px px = 0;
