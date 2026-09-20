@@ -9,9 +9,16 @@
 
 namespace md {
 
-// One-deep mailbox keeping only the newest value. A slow subscriber loses
-// resolution and nothing else: it never back-pressures the book writer.
-// Sound because every published value is ABSOLUTE state, not a delta.
+// One-deep mailbox keeping only the newest value.
+//
+// SINGLE READER. Each subscriber gets its OWN slot (Engine::AddSubscriber), and
+// sharing one between readers would be broken: WaitNext takes the value and
+// leaves the slot empty, so the first reader to wake steals it from the others,
+// and notify_one wakes only one of them anyway.
+//
+// A slow subscriber loses resolution and nothing else: it never back-pressures
+// the book writer. Sound because every published value is ABSOLUTE state, not a
+// delta.
 template <typename T>
 class ConflatingSlot {
  public:

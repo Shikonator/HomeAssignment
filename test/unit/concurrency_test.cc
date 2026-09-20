@@ -45,6 +45,20 @@ TEST(SpscRing, PreservesOrderAcrossThreads) {
   for (int i = 0; i < kCount; ++i) ASSERT_EQ(received[i], i);
 }
 
+// The slot is single-reader by design: each subscriber owns one. This pins the
+// behaviour that makes sharing one wrong, so the assumption is visible rather
+// than inferred.
+TEST(ConflatingSlot, TakingTheValueLeavesTheSlotEmpty) {
+  ConflatingSlot<int> slot;
+  slot.Publish(std::make_shared<const int>(1));
+
+  auto first = slot.WaitNextFor(std::chrono::milliseconds(50));
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(*first, 1);
+  // A second reader would get nothing -- which is why they never share a slot.
+  EXPECT_EQ(slot.WaitNextFor(std::chrono::milliseconds(20)), nullptr);
+}
+
 TEST(ConflatingSlot, KeepsOnlyNewestValue) {
   ConflatingSlot<int> slot;
   slot.Publish(std::make_shared<const int>(1));
