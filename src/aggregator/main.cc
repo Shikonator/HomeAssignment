@@ -53,59 +53,25 @@ void InstallSignalHandlers() {
   sigaction(SIGTERM, &action, nullptr);
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
-  const md::Flags flags(argc, argv);
-
-  if (flags.Has("help")) {
-    std::printf(
-        "cex-aggregator\n"
-        "  --listen=host:port        gRPC listen address (default 0.0.0.0:50051)\n"
-        "  --instrument=SYMBOL       instrument to aggregate (default BTCUSDT)\n"
-        "  --venues=a,b,c            subset of binance,okx,bybit (default all)\n"
-        "  --binance-ws=URL          override the Binance stream endpoint\n"
-        "  --binance-rest=URL        override the Binance depth endpoint\n"
-        "  --okx-ws=URL              override the OKX stream endpoint\n"
-        "  --bybit-ws=URL            override the Bybit stream endpoint\n"
-        "  --snapshot-limit=N        Binance REST depth (default 5000)\n"
-        "  --staleness-ms=N          exclude a venue silent this long (default 5000)\n"
-        "  --max-publish-bps=N       publish depth within N bps of the touch (default 500)\n"
-        "  --ca-file=PATH            CA bundle; empty uses the system trust store\n"
-);
-    return 0;
-  }
-
-  // The same list as --help above. An unrecognised flag is an error, not a
-  // silent default.
-  flags.RequireKnown({"help", "listen", "instrument", "venues", "binance-ws", "binance-rest",
-                      "okx-ws", "okx-symbol", "bybit-ws", "snapshot-limit", "staleness-ms",
-                      "max-publish-bps", "ca-file"});
-
-  const std::string listen = flags.Get("listen", "0.0.0.0:50051");
-  const std::string instrument = flags.Get("instrument", "BTCUSDT");
+// Builds one ring and one runner per selected venue. Kept out of main() so
+// main() reads as parse -> build -> start -> serve -> tear down.
+bool BuildVenues(const md::Flags& flags, const std::string& instrument,
+                 const md::VenueRunner::Options& runner_options,
+                 std::vector<std::unique_ptr<md::FeedRing>>* rings,
+                 std::vector<std::unique_ptr<md::VenueRunner>>* runners) {
   const std::string selected = flags.Get("venues", "binance,okx,bybit");
-  const std::string ca_file = flags.Get("ca-file", "");
-
-  md::VenueRunner::Options runner_options;
-  runner_options.ca_file = ca_file;
-
-  // Each venue gets its own ring. Single producer, single consumer, so no
-  // shared ring and no contention between venues.
-  std::vector<std::unique_ptr<md::FeedRing>> rings;
-  std::vector<std::unique_ptr<md::VenueRunner>> runners;
 
   const auto add_venue = [&](std::unique_ptr<md::VenueProtocol> protocol) {
-    const int index = static_cast<int>(runners.size());
+    const int index = static_cast<int>(runners->size());
     if (index >= md::kMaxVenues) {
       std::fprintf(stderr,
                    "configured %d venues but kMaxVenues is %d; raise it in consolidated.h\n",
                    index + 1, md::kMaxVenues);
-      std::exit(1);
+      return false;
     }
-    rings.push_back(std::make_unique<md::FeedRing>(1024));
-    runners.push_back(std::make_unique<md::VenueRunner>(index, std::move(protocol),
-                                                        rings.back().get(), runner_options));
+    rings->push_back(std::make_unique<md::FeedRing>(1024));
+    runners->push_back(std::make_unique<md::VenueRunner>(index, std::move(protocol),
+                                                        rings->back().get(), runner_options));
   };
 
   std::istringstream venue_list(selected);
@@ -123,7 +89,7 @@ int main(int argc, char** argv) {
         std::end(kKnownVenues)) {
       std::fprintf(stderr, "unknown venue '%s'; known venues are binance, okx, bybit\n",
                    name.c_str());
-      return 2;
+      return false;
     }
   }
   const auto wants = [&](std::string_view name) {
@@ -155,10 +121,58 @@ int main(int argc, char** argv) {
     add_venue(std::make_unique<md::BybitProtocol>(config));
   }
 
-  if (runners.empty()) {
+  if (runners->empty()) {
     std::fprintf(stderr, "no venues selected\n");
-    return 1;
+    return false;
   }
+  return true;
+}
+
+void PrintHelp() {
+    std::printf(
+        "cex-aggregator\n"
+        "  --listen=host:port        gRPC listen address (default 0.0.0.0:50051)\n"
+        "  --instrument=SYMBOL       instrument to aggregate (default BTCUSDT)\n"
+        "  --venues=a,b,c            subset of binance,okx,bybit (default all)\n"
+        "  --binance-ws=URL          override the Binance stream endpoint\n"
+        "  --binance-rest=URL        override the Binance depth endpoint\n"
+        "  --okx-ws=URL              override the OKX stream endpoint\n"
+        "  --bybit-ws=URL            override the Bybit stream endpoint\n"
+        "  --snapshot-limit=N        Binance REST depth (default 5000)\n"
+        "  --staleness-ms=N          exclude a venue silent this long (default 5000)\n"
+        "  --max-publish-bps=N       publish depth within N bps of the touch (default 500)\n"
+        "  --ca-file=PATH            CA bundle; empty uses the system trust store\n"
+);
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  const md::Flags flags(argc, argv);
+
+  if (flags.Has("help")) {
+    PrintHelp();
+    return 0;
+  }
+
+  // The same list as --help above. An unrecognised flag is an error, not a
+  // silent default.
+  flags.RequireKnown({"help", "listen", "instrument", "venues", "binance-ws", "binance-rest",
+                      "okx-ws", "okx-symbol", "bybit-ws", "snapshot-limit", "staleness-ms",
+                      "max-publish-bps", "ca-file"});
+
+  const std::string listen = flags.Get("listen", "0.0.0.0:50051");
+  const std::string instrument = flags.Get("instrument", "BTCUSDT");
+  const std::string ca_file = flags.Get("ca-file", "");
+
+  md::VenueRunner::Options runner_options;
+  runner_options.ca_file = ca_file;
+
+  // Each venue gets its own ring. Single producer, single consumer, so no
+  // shared ring and no contention between venues.
+  std::vector<std::unique_ptr<md::FeedRing>> rings;
+  std::vector<std::unique_ptr<md::VenueRunner>> runners;
+  if (!BuildVenues(flags, instrument, runner_options, &rings, &runners)) return 2;
 
   md::EngineConfig engine_config;
   engine_config.instrument = instrument;

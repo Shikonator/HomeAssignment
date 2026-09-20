@@ -56,31 +56,33 @@ class Session : public std::enable_shared_from_this<Session> {
                      });
   }
 
+  // Both schemes follow the same five steps -- resolve, connect, (handshake),
+  // write, read -- so both are written as named steps rather than one path
+  // using members and the other nesting lambdas three deep.
   void OnResolve(tcp::resolver::results_type results) {
-    if (url_.secure) {
-      beast::get_lowest_layer(tls_stream_).expires_after(std::chrono::seconds(15));
-      beast::get_lowest_layer(tls_stream_)
-          .async_connect(results, [self = shared_from_this()](
-                                      beast::error_code ec,
-                                      tcp::resolver::results_type::endpoint_type) {
-            if (ec) return self->Finish(false, {}, "connect: " + ec.message());
-            self->OnTlsConnect();
-          });
-      return;
-    }
-    beast::get_lowest_layer(plain_stream_).expires_after(std::chrono::seconds(15));
-    plain_stream_.async_connect(
-        results, [self = shared_from_this()](beast::error_code ec,
-                                             tcp::resolver::results_type::endpoint_type) {
-          if (ec) return self->Finish(false, {}, "connect: " + ec.message());
-          http::async_write(self->plain_stream_, self->request_,
-                            [self](beast::error_code write_ec, std::size_t) {
-                              if (write_ec) {
-                                return self->Finish(false, {}, "write: " + write_ec.message());
-                              }
-                              self->Read(self->plain_stream_);
-                            });
-        });
+    auto& lowest = url_.secure ? beast::get_lowest_layer(tls_stream_)
+                               : beast::get_lowest_layer(plain_stream_);
+    lowest.expires_after(std::chrono::seconds(15));
+    lowest.async_connect(results,
+                         [self = shared_from_this()](
+                             beast::error_code ec, tcp::resolver::results_type::endpoint_type) {
+                           if (ec) return self->Finish(false, {}, "connect: " + ec.message());
+                           self->OnConnect();
+                         });
+  }
+
+  void OnConnect() {
+    if (url_.secure) return OnTlsConnect();
+    Write(plain_stream_);
+  }
+
+  template <typename Stream>
+  void Write(Stream& stream) {
+    http::async_write(stream, request_,
+                      [self = shared_from_this(), &stream](beast::error_code ec, std::size_t) {
+                        if (ec) return self->Finish(false, {}, "write: " + ec.message());
+                        self->Read(stream);
+                      });
   }
 
   void OnTlsConnect() {
@@ -90,18 +92,8 @@ class Session : public std::enable_shared_from_this<Session> {
     tls_stream_.set_verify_callback(ssl::host_name_verification(url_.host));
     tls_stream_.async_handshake(ssl::stream_base::client,
                                 [self = shared_from_this()](beast::error_code ec) {
-                                  if (ec) {
-                                    return self->Finish(false, {}, "tls: " + ec.message());
-                                  }
-                                  http::async_write(
-                                      self->tls_stream_, self->request_,
-                                      [self](beast::error_code write_ec, std::size_t) {
-                                        if (write_ec) {
-                                          return self->Finish(false, {},
-                                                              "write: " + write_ec.message());
-                                        }
-                                        self->Read(self->tls_stream_);
-                                      });
+                                  if (ec) return self->Finish(false, {}, "tls: " + ec.message());
+                                  self->Write(self->tls_stream_);
                                 });
   }
 

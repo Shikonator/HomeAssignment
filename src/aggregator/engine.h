@@ -87,6 +87,9 @@ class Engine {
   void Run();
   void Apply(FeedBatch* batch);
   void Publish();
+  void SelectContributingVenues(std::int64_t now_steady, ConsolidatedBook* book,
+                                std::vector<VenueSideInput>* bid_inputs,
+                                std::vector<VenueSideInput>* ask_inputs);
   void RecordLatency(std::int64_t nanos);
 
   EngineConfig config_;

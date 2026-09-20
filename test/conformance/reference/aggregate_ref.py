@@ -178,7 +178,7 @@ class VolumeBand:
     open_ended: bool = False
 
 
-def volume_bands(levels, targets, max_intermediate=None):
+def volume_bands(levels, targets):
     """Cumulative sweeps from the touch, plus one trailing open-ended band.
 
     A single walk outward serves every target because the targets are
@@ -187,24 +187,22 @@ def volume_bands(levels, targets, max_intermediate=None):
     """
     out = []
     for target in sorted(targets):
-        out.append(_sweep(levels, target, open_ended=False,
-                          max_intermediate=max_intermediate))
+        out.append(_sweep(levels, target, open_ended=False))
     # The "50M+" of the specification: everything the consolidated book has.
     # Target is 0, so notional_target_e8 stays an unambiguous key across the set.
-    out.append(_sweep(levels, None, open_ended=True, echo_target=0,
-                      max_intermediate=max_intermediate))
+    out.append(_sweep(levels, None, open_ended=True, echo_target=0))
     return out
 
 
-def _sweep(levels, target_e8, open_ended, echo_target=0, max_intermediate=None):
+def _sweep(levels, target_e8, open_ended, echo_target=0):
     """Walk outward from the touch accumulating qty and notional.
 
     `fully_filled` answers "did the BOOK run out before the target was met",
-    NOT "did filled_notional reach the target exactly". Those differ: the
-    boundary level is consumed partially and the partial quantity truncates
-    toward zero, so a satisfied target normally lands a hair BELOW it. Testing
-    cum_notional >= target would report a filled sweep as unfilled on almost
-    every real book.
+    not "did filled_notional reach the target exactly". Those differ: the
+    boundary level is consumed partially and truncates toward zero, so a
+    satisfied target normally lands a hair below it. Testing
+    cum_notional >= target would call a filled sweep unfilled on almost any
+    real book.
     """
     band = VolumeBand(
         notional_target_e8=(echo_target if open_ended else target_e8),
@@ -216,43 +214,34 @@ def _sweep(levels, target_e8, open_ended, echo_target=0, max_intermediate=None):
 
     for lvl in levels:
         lvl_notional = notional_e8(lvl.px_e8, lvl.qty_total_e8)
-        if max_intermediate is not None:
-            max_intermediate[0] = max(max_intermediate[0],
-                                      abs(lvl.px_e8 * lvl.qty_total_e8))
+        whole = open_ended or cum_notional + lvl_notional <= target_e8
 
-        if open_ended or cum_notional + lvl_notional <= target_e8:
+        if whole:
             take_qty, take_notional = lvl.qty_total_e8, lvl_notional
         else:
-            # Partial consumption of the boundary level.
-            remaining = target_e8 - cum_notional
-            take_qty = trunc_div(remaining * SCALE, lvl.px_e8)
+            take_qty = trunc_div((target_e8 - cum_notional) * SCALE, lvl.px_e8)
             if take_qty <= 0:
-                # The residual is smaller than one representable unit of
-                # quantity at this price (under a hundredth of a cent on a
-                # 1M target). The target is met; the level is not touched.
+                # The residual buys less than one representable unit of
+                # quantity at this price -- under a hundredth of a cent on a
+                # 1M target. Target met; this level is not touched.
                 target_met = True
                 break
             take_notional = notional_e8(lvl.px_e8, take_qty)
-            cum_qty += take_qty
-            cum_notional += take_notional
-            band.levels_consumed += 1
-            band.worst_price_e8 = lvl.px_e8
-            target_met = True
-            break
 
         cum_qty += take_qty
         cum_notional += take_notional
         band.levels_consumed += 1
         band.worst_price_e8 = lvl.px_e8
-        if not open_ended and cum_notional >= target_e8:
+
+        if not open_ended and (not whole or cum_notional >= target_e8):
             target_met = True
             break
 
     band.filled_qty_e8 = cum_qty
     band.filled_notional_e8 = cum_notional
     band.vwap_price_e8 = vwap_e8(cum_notional, cum_qty)
-    # Open-ended exhausts the ladder by construction, so "the target was met"
-    # has no meaning for it; report False rather than a vacuous True.
+    # Open-ended exhausts the ladder by construction, so "target met" has no
+    # meaning for it; report False rather than a vacuous True.
     band.fully_filled = (not open_ended) and target_met
     return band
 

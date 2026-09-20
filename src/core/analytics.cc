@@ -18,6 +18,48 @@ PriceBandResult MakePriceBand(std::int64_t offset_bps_e8, Px bound, Wide cum_qty
   return band;
 }
 
+// An empty side still emits every requested band, zeroed, so the repeated
+// fields stay aligned with the request. A consumer should never have to
+// distinguish "no band" from "empty band".
+void EmitEmptyBands(const BandConfig& config, SideBands* out) {
+  for (const Notional target : config.notionals_e8) {
+    VolumeBandResult band;
+    band.target_e8 = target;
+    out->volume.push_back(band);
+  }
+  VolumeBandResult open_volume;
+  open_volume.open_ended = true;
+  out->volume.push_back(open_volume);
+
+  for (const std::int64_t offset : config.offsets_bps_e8) {
+    out->price.push_back(MakePriceBand(offset, 0, 0, 0, 0, false, true));
+  }
+  out->price.push_back(MakePriceBand(0, 0, 0, 0, 0, true, false));
+}
+
+// One volume band completed inside the current level. `partial` is the quantity
+// of that level the sweep consumes, which is zero when the residual is smaller
+// than one representable unit at this price.
+VolumeBandResult CloseVolumeBand(Notional target, Px px, Px worst_px, Qty partial,
+                                 Wide cumulative_qty, Wide cumulative_notional, int levels) {
+  const Wide partial_notional = partial > 0 ? NotionalWide(px, partial) : 0;
+  const Wide filled_qty = cumulative_qty + partial;
+  const Wide filled_notional = cumulative_notional + partial_notional;
+
+  VolumeBandResult band;
+  band.target_e8 = target;
+  // The ACTUAL notional swept, not the requested target: truncating the
+  // boundary quantity leaves it a hair under, and reporting the target would
+  // break filled_qty * vwap == filled_notional.
+  band.filled_notional_e8 = NarrowSaturating(filled_notional);
+  band.filled_qty_e8 = NarrowSaturating(filled_qty);
+  band.vwap_e8 = Vwap(filled_notional, filled_qty);
+  band.worst_e8 = partial > 0 ? px : worst_px;
+  band.fully_filled = true;
+  band.levels_consumed = levels + (partial > 0 ? 1 : 0);
+  return band;
+}
+
 }  // namespace
 
 Px ViewBestPx(const LadderView& view) {
@@ -55,23 +97,8 @@ void ComputeSideBands(const LadderView& side, const BandConfig& config, SideBand
 
   const Px reference = ViewBestPx(side);
 
-  // Empty side. Emit zeroed bands anyway so the repeated fields stay aligned
-  // with what the subscriber asked for; a consumer should never have to
-  // distinguish "no band" from "empty band".
   if (reference == 0) {
-    for (const Notional target : config.notionals_e8) {
-      VolumeBandResult band;
-      band.target_e8 = target;
-      out->volume.push_back(band);
-    }
-    VolumeBandResult open_volume;
-    open_volume.open_ended = true;
-    out->volume.push_back(open_volume);
-
-    for (const std::int64_t offset : config.offsets_bps_e8) {
-      out->price.push_back(MakePriceBand(offset, 0, 0, 0, 0, false, true));
-    }
-    out->price.push_back(MakePriceBand(0, 0, 0, 0, 0, true, false));
+    EmitEmptyBands(config, out);
     return;
   }
 
@@ -107,39 +134,18 @@ void ComputeSideBands(const LadderView& side, const BandConfig& config, SideBand
            cumulative_notional + level_notional >= config.notionals_e8[volume_index]) {
       const Wide target = config.notionals_e8[volume_index];
 
-      // When the level is consumed in full there is no partial fill to compute,
-      // and re-deriving the quantity from the notional would be WRONG rather
-      // than merely redundant: the target was itself produced by truncating
-      // px*qty/kScale, so dividing back truncates a second time and lands one
-      // unit short. At exact equality the answer is already in hand.
+      // At exact equality the level is consumed in full and the quantity is
+      // already in hand. Re-deriving it from the notional would be WRONG, not
+      // merely redundant: the target came from truncating px*qty/kScale, so
+      // dividing back truncates again and lands one unit short.
       const bool consumes_whole_level = (cumulative_notional + level_notional <= target);
       const Qty partial = consumes_whole_level
                               ? qty
                               : QtyForNotional(target - cumulative_notional, px);
 
-      // When the residual is smaller than one representable unit of quantity at
-      // this price, the sweep completes without touching the level at all. The
-      // shortfall is bounded by px/kScale -- a fraction of a cent -- and
-      // reporting it as unfilled would call a satisfied sweep a failure over a
-      // rounding artifact.
-      const Wide partial_notional = partial > 0 ? NotionalWide(px, partial) : 0;
-      const Wide filled_qty = cumulative_qty + partial;
-      const Wide filled_notional = cumulative_notional + partial_notional;
-
-      VolumeBandResult band;
-      band.target_e8 = config.notionals_e8[volume_index];
-      // The ACTUAL notional swept, not the requested target. Truncating the
-      // boundary quantity leaves this a hair under the target, and reporting
-      // the target instead would break the identity
-      // filled_qty * vwap == filled_notional that lets a consumer cross-check
-      // the triple. Every other field here is an actual; this one is too.
-      band.filled_notional_e8 = NarrowSaturating(filled_notional);
-      band.filled_qty_e8 = NarrowSaturating(filled_qty);
-      band.vwap_e8 = Vwap(filled_notional, filled_qty);
-      band.worst_e8 = partial > 0 ? px : worst_px;
-      band.fully_filled = true;
-      band.levels_consumed = levels + (partial > 0 ? 1 : 0);
-      out->volume.push_back(band);
+      out->volume.push_back(CloseVolumeBand(config.notionals_e8[volume_index], px, worst_px,
+                                            partial, cumulative_qty, cumulative_notional,
+                                            levels));
       ++volume_index;
     }
 

@@ -114,21 +114,18 @@ void Engine::Apply(FeedBatch* batch) {
   batch->updates.clear();
 }
 
-void Engine::Publish() {
-  const std::int64_t now_steady = SteadyNowNs();
+// Decides which venue books become merge inputs, and records the rest as
+// stale. Every venue gets a clock entry either way, so a consumer can see how
+// far behind each one is.
+void Engine::SelectContributingVenues(std::int64_t now_steady, ConsolidatedBook* book_ptr,
+                                      std::vector<VenueSideInput>* bid_inputs,
+                                      std::vector<VenueSideInput>* ask_inputs) {
+  ConsolidatedBook& book = *book_ptr;
   const std::int64_t staleness_ns =
       std::chrono::duration_cast<std::chrono::nanoseconds>(config_.staleness_timeout).count();
 
-  auto book = std::make_shared<ConsolidatedBook>();
-  book->instrument = config_.instrument;
-  book->sequence = published_.fetch_add(1, std::memory_order_relaxed) + 1;
-  book->publish_ts_ns = WallNowNs();
-  book->ingest_recv_ts_ns = newest_recv_ns_;
-
-  std::vector<VenueSideInput> bid_inputs;
-  std::vector<VenueSideInput> ask_inputs;
-  bid_inputs.reserve(venues_.size());
-  ask_inputs.reserve(venues_.size());
+  bid_inputs->reserve(venues_.size());
+  ask_inputs->reserve(venues_.size());
 
   for (std::size_t i = 0; i < venues_.size(); ++i) {
     const std::string& name = venues_[i].name;
@@ -152,11 +149,11 @@ void Engine::Publish() {
     // subscriber-facing venue filter, which is why the per-level attribution
     // array pays for itself twice.
     if (live && fresh) {
-      book->contributing.push_back(name);
-      bid_inputs.push_back({static_cast<int>(i), books_[i].bids.levels()});
-      ask_inputs.push_back({static_cast<int>(i), books_[i].asks.levels()});
+      book.contributing.push_back(name);
+      bid_inputs->push_back({static_cast<int>(i), books_[i].bids.levels()});
+      ask_inputs->push_back({static_cast<int>(i), books_[i].asks.levels()});
     } else {
-      book->stale.push_back(name);
+      book.stale.push_back(name);
     }
 
     VenueClockInfo clock;
@@ -167,8 +164,22 @@ void Engine::Publish() {
     clock.ask_levels = static_cast<int>(books_[i].asks.size());
     clock.best_bid = books_[i].bids.BestPx();
     clock.best_ask = books_[i].asks.BestPx();
-    book->clocks.push_back(std::move(clock));
+    book.clocks.push_back(std::move(clock));
   }
+}
+
+void Engine::Publish() {
+  const std::int64_t now_steady = SteadyNowNs();
+
+  auto book = std::make_shared<ConsolidatedBook>();
+  book->instrument = config_.instrument;
+  book->sequence = published_.fetch_add(1, std::memory_order_relaxed) + 1;
+  book->publish_ts_ns = WallNowNs();
+  book->ingest_recv_ts_ns = newest_recv_ns_;
+
+  std::vector<VenueSideInput> bid_inputs;
+  std::vector<VenueSideInput> ask_inputs;
+  SelectContributingVenues(now_steady, book.get(), &bid_inputs, &ask_inputs);
 
   MergeLimits limits;
   limits.max_levels = config_.max_publish_levels;
