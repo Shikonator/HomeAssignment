@@ -71,8 +71,6 @@ message Touch {
   // publish at different cadences, so the touch is always a blend of instants.
   // Never clamped, suppressed or fee-adjusted. See README, "Crossed books".
   bool crossed = 8;
-
-  reserved 9 to 15;
 }
 
 // The consolidated book is a blend of several instants; this is the skew.
@@ -107,6 +105,4 @@ message SnapshotMeta {
   // band's bound outran the ladder.
   bool bid_ladder_truncated = 10;
   bool ask_ladder_truncated = 11;
-
-  reserved 12 to 20;
 }

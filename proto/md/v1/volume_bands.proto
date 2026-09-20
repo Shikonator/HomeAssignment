@@ -48,8 +48,6 @@ message VolumeBand {
 
   // Sweeps all available liquidity rather than a finite target.
   bool open_ended = 8;
-
-  reserved 9 to 15;
 }
 
 message VolumeBandsUpdate {
@@ -59,6 +57,4 @@ message VolumeBandsUpdate {
   repeated VolumeBand bid = 3;
   // Sweeping resting offers (buying). Prices ascend.
   repeated VolumeBand ask = 4;
-
-  reserved 5 to 15;
 }

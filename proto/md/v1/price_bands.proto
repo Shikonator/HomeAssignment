@@ -51,8 +51,6 @@ message PriceBand {
   // available depth rather than depth within the requested offset. Expected for
   // wide offsets. Always FALSE for the open-ended band.
   bool depth_limited = 8;
-
-  reserved 9 to 15;
 }
 
 message PriceBandsUpdate {
@@ -60,6 +58,4 @@ message PriceBandsUpdate {
   Touch touch = 2;
   repeated PriceBand bid = 3;
   repeated PriceBand ask = 4;
-
-  reserved 5 to 15;
 }

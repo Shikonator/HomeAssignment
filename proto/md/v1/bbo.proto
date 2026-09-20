@@ -18,6 +18,4 @@ message BboUpdate {
   Touch touch = 2;
   Quote bid = 3;
   Quote ask = 4;
-
-  reserved 5 to 15;
 }
