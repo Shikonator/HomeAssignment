@@ -47,7 +47,8 @@ int main(int argc, char** argv) {
     request.add_offsets_bps_e8(std::atoll(band.c_str()) * md::kScale);
   }
 
+  md::Output out(options.out_file);
   grpc::ClientContext context;
   auto reader = stub->Stream(&context, request);
-  return md::StreamLoop<md::v1::PriceBandsUpdate>(options, reader.get(), Render);
+  return md::StreamLoop<md::v1::PriceBandsUpdate>(options, &out, &context, reader.get(), Render);
 }

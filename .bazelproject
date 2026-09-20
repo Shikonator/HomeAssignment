@@ -6,14 +6,27 @@
 # Without this, CLion has no CMake to read and will not index the project at
 # all -- C++ navigation, go-to-definition and find-usages are all dead.
 
+# `.` is the workspace root, so README.md, CLAUDE.md, MODULE.bazel, .bazelrc
+# and docker/ appear in the project tree and in Find in Files, instead of only
+# the code directories.
+#
+# The exclusions are not optional. The bazel-* entries are symlinks into
+# ~/Library/Caches; indexing them pulls in the entire external dependency tree
+# -- gRPC, Boost, protobuf, Abseil -- and the IDE will crawl for a very long
+# time. cmake-build-debug is a leftover from the CLion skeleton this project
+# started as; it is dead and must not be resurrected.
 directories:
-  src
-  proto
-  test
-  tools
+  .
+  -bazel-bin
+  -bazel-hermeneutic
+  -bazel-out
+  -bazel-testlogs
+  -cmake-build-debug
+  -.idea
+  -.git
 
 # Everything, so the generated protobuf and gRPC headers are indexed too.
-# Without the proto targets, ctrl-click on BboUpdate or MarketData::Stub goes
+# Without the proto targets, ctrl-click on BboUpdate or Bbo::Stub goes
 # nowhere, because those classes only exist after a build.
 targets:
   //src/...
@@ -27,9 +40,8 @@ additional_languages:
   c
 
 # Inherited from .bazelrc, repeated here because the plugin builds with its own
-# flag set and these are not optional:
+# flag set and this one is not optional:
 #   --@boost.asio//:ssl=boringssl   one TLS stack; without it, duplicate SSL_*
-#   -c opt                          the .bazelrc default
 build_flags:
   --@boost.asio//:ssl=boringssl
 

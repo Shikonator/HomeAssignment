@@ -1,4 +1,7 @@
-# hermeneutic — consolidated BTCUSDT market data aggregator
+# HomeAssignment — consolidated BTCUSDT market data aggregator
+
+(Built under the working name `hermeneutic`; that name still appears in image
+tags and the compose project name.)
 
 Take-home assignment. Connects to Binance, OKX and Bybit, merges their BTCUSDT
 order books into one consolidated book, serves it over gRPC to three publisher
@@ -40,6 +43,8 @@ src/venues/      VenueProtocol (pure logic) + one file per exchange + runner (al
 src/net/         websocket client, http client, url parsing, json
 src/aggregator/  engine (owns the book), four gRPC services, main
 src/clients/     four client binaries
+docker/          Dockerfile (shared builder + runtime), one <service>.Dockerfile
+                 per service, docker-compose.yml
 test/unit/       ours
 test/integration/ real engine + server + client, no network
 test/conformance/ NOT OURS — see below
@@ -90,11 +95,19 @@ there. The load-bearing ones are marked by explaining *why*, not *what*.
   binaries this size, at the link step, after the whole compile.
 - Docker build takes ~40 min on first run and prints NOTHING until it finishes
   (BuildKit buffers). Needs an 8 GB VM.
+- **Renaming or moving the workspace directory breaks `bazel build //...`.**
+  The convenience symlink is named after the directory, so the old
+  `bazel-<oldname>` is left behind pointing at a dead output base; Bazel no
+  longer recognises it as its own and `//...` recurses into it, failing with
+  `error loading package 'bazel-<oldname>/external/bazel_skylib+/...'`. Fix:
+  `rm bazel-<oldname>`. Moving also changes the output base, so the next build
+  is a full rebuild.
 - macOS has no `timeout`; use `perl -e 'alarm N; exec @ARGV' ...`.
 - zsh does not word-split unquoted parameters, which can make a shell test pass
   for the wrong reason.
 
 ## State
 
-16+ commits on `main`. **Not pushed — no git remote yet.** That is the one
-incomplete deliverable; it needs the user's GitHub account.
+33 commits on `main`, pushed to https://github.com/Shikonator/HomeAssignment
+(public). All four deliverables are in the repo; the README's "Deliverables"
+table maps each one to where it lives.

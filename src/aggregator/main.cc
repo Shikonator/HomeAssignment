@@ -72,6 +72,7 @@ bool BuildVenues(const md::Flags& flags, const std::string& instrument,
     rings->push_back(std::make_unique<md::FeedRing>(1024));
     runners->push_back(std::make_unique<md::VenueRunner>(index, std::move(protocol),
                                                         rings->back().get(), runner_options));
+    return true;
   };
 
   std::istringstream venue_list(selected);
@@ -105,20 +106,20 @@ bool BuildVenues(const md::Flags& flags, const std::string& instrument,
     config.snapshot_limit = flags.GetInt("snapshot-limit", 5000, 1, 5000);
     config.stream_url = flags.Get("binance-ws", config.stream_url);
     config.rest_url = flags.Get("binance-rest", config.rest_url);
-    add_venue(std::make_unique<md::BinanceProtocol>(config));
+    if (!add_venue(std::make_unique<md::BinanceProtocol>(config))) return false;
   }
   if (wants("okx")) {
     md::OkxProtocol::Config config;
     // OKX spells the instrument differently from the other two.
     config.symbol = flags.Get("okx-symbol", instrument == "BTCUSDT" ? "BTC-USDT" : instrument);
     config.stream_url = flags.Get("okx-ws", config.stream_url);
-    add_venue(std::make_unique<md::OkxProtocol>(config));
+    if (!add_venue(std::make_unique<md::OkxProtocol>(config))) return false;
   }
   if (wants("bybit")) {
     md::BybitProtocol::Config config;
     config.symbol = instrument;
     config.stream_url = flags.Get("bybit-ws", config.stream_url);
-    add_venue(std::make_unique<md::BybitProtocol>(config));
+    if (!add_venue(std::make_unique<md::BybitProtocol>(config))) return false;
   }
 
   if (runners->empty()) {

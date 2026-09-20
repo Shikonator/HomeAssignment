@@ -26,10 +26,11 @@ class StreamingBase {
   explicit StreamingBase(Engine* engine) : engine_(engine) {}
 
  protected:
-  // Subscribe, wait, honour cancellation and the client's conflation floor,
-  // emit. `emit` returns false when the write fails, ending the stream.
+  // Rejects an instrument this server does not aggregate.
   grpc::Status CheckInstrument(const v1::Subscription& subscription) const;
 
+  // Subscribe, wait, honour cancellation and the client's conflation floor,
+  // emit. `emit` returns false when the write fails, ending the stream.
   grpc::Status RunStream(grpc::ServerContext* context, const v1::Subscription& subscription,
                          const std::function<bool(const ConsolidatedBook&)>& emit);
 

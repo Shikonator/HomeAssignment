@@ -7,7 +7,6 @@
 #include <fstream>
 #include <memory>
 #include <span>
-#include <algorithm>
 #include <vector>
 #include <string>
 
@@ -16,7 +15,9 @@
 #include "proto/md/v1/price_bands.grpc.pb.h"
 #include "proto/md/v1/status.grpc.pb.h"
 #include "proto/md/v1/volume_bands.grpc.pb.h"
+#include "absl/strings/str_format.h"
 #include "src/common/flags.h"
+#include "src/common/log.h"
 #include "src/core/clock.h"
 #include "src/core/fixed.h"
 
@@ -31,7 +32,7 @@ struct ClientOptions {
   std::uint32_t min_interval_micros = 0;
   bool json = false;
   std::string out_file;  // empty = stdout only
-  int max_updates = 0;   // 0 = run forever; used by the end-to-end tests
+  int max_updates = 0;   // 0 = run forever, else exit after N records
 };
 
 // Flags every publisher accepts. `extra` carries the band overrides that only
@@ -109,7 +110,8 @@ inline std::string ToJson(const google::protobuf::Message& message) {
                  std::string(status.message()).c_str());
     return {};
   }
-  return out + "\n";
+  out.push_back('\n');
+  return out;
 }
 
 // Fixed-width so a stream of these reads as a table rather than ragged text.
@@ -141,22 +143,20 @@ inline std::string Bps(std::int64_t bps_e8) {
 // specification's "50bps/100bps/..." rather than "50.00bps".
 inline std::string BpsLabel(std::int64_t bps_e8) { return FormatFixed(bps_e8, 0); }
 
-// Writes each rendered record to stdout and, when --out-file is set, appends
-// the same bytes to that file. Rendering goes through one buffer so the two
-// destinations cannot drift apart.
+// The client's data channel: stdout, plus --out-file when set. Owned by main()
+// rather than by StreamLoop, so a unary client honours --out-file too.
 class Output {
  public:
   explicit Output(const std::string& path) {
-    if (!path.empty()) {
-      file_.open(path, std::ios::out | std::ios::app);
-      if (!file_) std::fprintf(stderr, "cannot open %s for writing\n", path.c_str());
-    }
+    if (path.empty()) return;
+    file_.open(path, std::ios::out | std::ios::app);
+    if (!file_) Log("output", "cannot open " + path + " for writing");
   }
 
   void Write(const std::string& record) {
-    std::fputs(record.c_str(), stdout);
+    std::fwrite(record.data(), 1, record.size(), stdout);
     // One flush per record, so Docker's combined log does not interleave
-    // three services mid-record.
+    // several services mid-record.
     std::fflush(stdout);
     if (file_.is_open()) {
       file_ << record;
@@ -171,13 +171,19 @@ class Output {
 // Drives a server-streaming RPC: read, render, flush, honour --max-updates.
 // Rendering is the only thing the three publishers do differently.
 template <typename Update, typename Reader, typename Render>
-int StreamLoop(const ClientOptions& options, Reader* reader, Render render) {
-  Output out(options.out_file);
+int StreamLoop(const ClientOptions& options, Output* out, grpc::ClientContext* context,
+               Reader* reader, Render render) {
   Update update;
   int count = 0;
   while (reader->Read(&update)) {
-    out.Write(options.json ? ToJson(update) : render(update));
-    if (options.max_updates > 0 && ++count >= options.max_updates) break;
+    out->Write(options.json ? ToJson(update) : render(update));
+    if (options.max_updates > 0 && ++count >= options.max_updates) {
+      // A server stream ends when the SERVER says so, and this one never does.
+      // Without the cancel, Finish() blocks until the aggregator shuts down and
+      // --max-updates stops printing without ever exiting.
+      context->TryCancel();
+      break;
+    }
   }
   const grpc::Status status = reader->Finish();
   if (!status.ok() && options.max_updates == 0) {
@@ -187,13 +193,11 @@ int StreamLoop(const ClientOptions& options, Reader* reader, Render render) {
   return 0;
 }
 
-// printf into a std::string, so renderers can compose a record and hand it to
+// Formats one record line. Renderers compose these and hand the result to
 // Output rather than each writing to stdout themselves.
 template <typename... Args>
-std::string Line(const char* format, Args... args) {
-  char buffer[512];
-  std::snprintf(buffer, sizeof(buffer), format, args...);
-  return std::string(buffer) + "\n";
+std::string Line(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return absl::StrFormat(format, args...) + "\n";
 }
 
 // "binance:1.50000000 okx:0.50000000 " for a quote's venue attribution.

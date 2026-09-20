@@ -16,11 +16,116 @@ book and serves it over gRPC to three publisher services.
 
 C++20, Bazel, `docker compose up`.
 
+## Deliverables
+
+| Asked for | Delivered | Where |
+|---|---|---|
+| Codebase in GitHub that we can download | this repository | `git clone`, then `bazel test //...` |
+| Docker container files for **every service** | one per service, four in total | `docker/aggregator.Dockerfile`, `docker/bbo-client.Dockerfile`, `docker/volume-bands-client.Dockerfile`, `docker/price-bands-client.Dockerfile` |
+| Docker compose file, everything on a single host | one command brings up all four | `docker/docker-compose.yml` |
+| README: build, run, technical decisions | this file | "Quick start" to build and run, "Design decisions" and "Assumptions" for the reasoning, "Requirements traceability" for the point-by-point map |
+
+The four service Dockerfiles are deliberately thin. The expensive work --
+compiling gRPC, Boost and protobuf -- happens once in the shared `builder` stage
+of `docker/Dockerfile`, and each service file selects its binary out of it. Four
+self-contained Dockerfiles would compile that dependency tree four times and
+turn a 25-minute build into a 100-minute one. Compose uses the same shared
+stages, which is why `docker compose up` is the one-command path.
+
 ## Quick start
+
+The assignment asks for two Docker deliverables, and they are two commands: run
+everything on one host, or run any service on its own.
+
+### Run everything
 
 ```bash
 docker compose -f docker/docker-compose.yml up --build
 ```
+
+Brings up the aggregator and all three publishers. The clients wait on the
+aggregator's health check rather than racing it and printing connection errors.
+
+| Command | Does |
+|---|---|
+| `docker compose -f docker/docker-compose.yml up --build` | start **all four** services |
+| `docker compose -f docker/docker-compose.yml up bbo` | start one service, plus what it depends on |
+| `docker compose -f docker/docker-compose.yml ps` | what is running, and each health state |
+| `docker compose -f docker/docker-compose.yml logs -f bbo` | follow one service's output |
+| `docker compose -f docker/docker-compose.yml down` | stop and remove everything |
+
+Naming a service limits the run to that service and its dependencies; omitting
+the name runs the whole stack.
+
+### Run one service on its own
+
+Every service has its own Dockerfile and its own image, so each builds and runs
+independently.
+
+| Service | Dockerfile | Image |
+|---|---|---|
+| Aggregator | `docker/aggregator.Dockerfile` | `md/aggregator` |
+| BBO | `docker/bbo-client.Dockerfile` | `md/bbo-client` |
+| Volume bands | `docker/volume-bands-client.Dockerfile` | `md/volume-bands-client` |
+| Price bands | `docker/price-bands-client.Dockerfile` | `md/price-bands-client` |
+
+**1. Build.** The two shared images carry the compile and the runtime base, so
+each service image is a binary copy on top of them:
+
+```bash
+docker build -f docker/Dockerfile --target builder -t md-builder .   # ~11 min
+docker build -f docker/Dockerfile --target runtime -t md-runtime .   # seconds
+
+docker build -f docker/aggregator.Dockerfile          -t md/aggregator .
+docker build -f docker/bbo-client.Dockerfile          -t md/bbo-client .
+docker build -f docker/volume-bands-client.Dockerfile -t md/volume-bands-client .
+docker build -f docker/price-bands-client.Dockerfile  -t md/price-bands-client .
+```
+
+**2. Start the aggregator.** It has to be first: it is the server the publishers
+subscribe to.
+
+```bash
+docker network create md
+docker run -d --name aggregator --network md md/aggregator
+```
+
+Wait for it to reach the exchanges -- about eight seconds:
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' aggregator
+```
+
+`starting` means no venue is LIVE yet; `healthy` means at least one is.
+
+**3. Run any publisher, one at a time.**
+
+```bash
+docker run --rm --network md md/bbo-client           --server=aggregator:50051 --max-updates=5
+docker run --rm --network md md/volume-bands-client  --server=aggregator:50051 --max-updates=5
+docker run --rm --network md md/price-bands-client   --server=aggregator:50051 --max-updates=5
+```
+
+`--max-updates=5` prints five records and exits; drop it to stream until Ctrl-C.
+`--rm` means the container deletes itself on exit rather than accumulating.
+
+**4. Clean up.**
+
+```bash
+docker rm -f aggregator && docker network rm md
+```
+
+Two things that bite:
+
+* **No `-p` here, deliberately.** The publishers find the aggregator by container
+  name over the `md` network, which is why both join it -- Docker's DNS does not
+  resolve names on the default bridge. Publishing a port is only needed to reach
+  the aggregator from the host, and `-p 50051:50051` will collide with
+  `docker compose up` if that stack is already running.
+* **A failed `docker run -d` still leaves the container behind** in `Created`
+  state, holding its name, so the retry fails with a different error. Clear it
+  with `docker rm -f aggregator` first. `docker ps -a` shows these; `docker ps`
+  does not.
 
 * **Needs outbound internet** to reach the exchanges. The tests do not.
 * **No API keys.** Spot was chosen over perpetual futures because all three
@@ -32,12 +137,27 @@ docker compose -f docker/docker-compose.yml up --build
 * `docker compose` is a CLI plugin. Without it you get `unknown shorthand flag:
   'f'`, which looks like a bad compose file. Install `docker-compose` and
   `docker-buildx`.
+* `error getting credentials -- exec: "docker-credential-desktop": executable
+  file not found in $PATH` means the `docker` on your PATH is not the one Docker
+  Desktop installed -- Homebrew's, usually -- while `~/.docker/config.json`
+  still names a helper that ships only inside `Docker.app`. It fails before any
+  layer is built, on the `# syntax=` line. Link the helper once:
 
-Without Docker (Bazel 9.2; on Linux also needs `lld`, see `.bazelrc`):
+  ```bash
+  ln -s /Applications/Docker.app/Contents/Resources/bin/docker-credential-desktop \
+        /opt/homebrew/bin/
+  ```
+
+### Without Docker
+
+Bazel 9.2; on Linux also needs `lld`, see `.bazelrc`. Start the aggregator once,
+then run whichever publishers you want against it -- each is its own process and
+none of them need the others:
 
 ```bash
 bazel build //...
 bazel-bin/src/aggregator/aggregator --listen=127.0.0.1:50051 &
+
 bazel-bin/src/clients/bbo_client          --server=127.0.0.1:50051
 bazel-bin/src/clients/volume_bands_client --server=127.0.0.1:50051
 bazel-bin/src/clients/price_bands_client  --server=127.0.0.1:50051
@@ -45,6 +165,19 @@ bazel-bin/src/clients/status_client       --server=127.0.0.1:50051
 ```
 
 All three venues reach `LIVE` in about 1.5 seconds.
+
+Each publisher streams until interrupted. Three flags make a single run easier
+to inspect, and work on every client and in every image:
+
+| Flag | Effect |
+|---|---|
+| `--max-updates=N` | print N updates and exit, instead of streaming forever |
+| `--out-file=PATH` | append each record to a file as well as stdout |
+| `--json` | emit JSON instead of the table, for piping into `jq` |
+
+```bash
+bazel-bin/src/clients/bbo_client --server=127.0.0.1:50051 --max-updates=5 --json
+```
 
 ## Assumptions
 
@@ -417,12 +550,14 @@ message naming the flag, the rule and the offending value.
 | Price bands 50–1000bps+ | `src/clients/price_bands_main.cc` | `analytics_test`, conformance, live run |
 | Publish to stdout | all three clients; `--out-file` also appends to a file | live run |
 | C++ implementation | C++20 throughout | no `py_*` rules in the build |
-| Docker file per service | `docker/Dockerfile`, five stages | `docker compose build` |
-| Compose, single host | `docker/docker-compose.yml` | `docker compose up`, 8h soak |
+| Docker container files for every service | one Dockerfile per service in `docker/`, over a shared builder | `docker compose build`, `docker build -f docker/<service>.Dockerfile` |
+| Compose file, everything on a single host | `docker/docker-compose.yml` | `docker compose up`, 8h soak |
 | README | this file | — |
 
-Every service gets its own image and build target from one multi-stage
-Dockerfile, so gRPC compiles once rather than four times. Built and run on arm64
+Every service gets its own image and its own build target, from one multi-stage
+Dockerfile rather than four separate ones, so gRPC, Boost and protobuf compile
+once per build instead of four times. Each image still builds and runs
+independently -- see "Run one service on its own". Built and run on arm64
 (Apple Silicon via colima); x86_64 takes the same path but was not executed.
 
 ## Known limitations

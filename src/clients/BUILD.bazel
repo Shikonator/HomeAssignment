@@ -11,6 +11,8 @@ cc_library(
         "//proto/md/v1:status_cc_grpc",
         "//proto/md/v1:volume_bands_cc_grpc",
         "//src/common:flags",
+        "//src/common:log",
+        "@abseil-cpp//absl/strings:str_format",
         "//src/core",
         "@grpc//:grpc++",
         "@protobuf//:protobuf",

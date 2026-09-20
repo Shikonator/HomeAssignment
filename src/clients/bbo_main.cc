@@ -30,7 +30,8 @@ int main(int argc, char** argv) {
   md::v1::StreamBboRequest request;
   md::FillSubscription(options, request.mutable_subscription());
 
+  md::Output out(options.out_file);
   grpc::ClientContext context;
   auto reader = stub->Stream(&context, request);
-  return md::StreamLoop<md::v1::BboUpdate>(options, reader.get(), Render);
+  return md::StreamLoop<md::v1::BboUpdate>(options, &out, &context, reader.get(), Render);
 }

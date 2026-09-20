@@ -49,7 +49,8 @@ int main(int argc, char** argv) {
     request.add_notional_bands_e8(std::atoll(band.c_str()) * md::kScale);
   }
 
+  md::Output out(options.out_file);
   grpc::ClientContext context;
   auto reader = stub->Stream(&context, request);
-  return md::StreamLoop<md::v1::VolumeBandsUpdate>(options, reader.get(), Render);
+  return md::StreamLoop<md::v1::VolumeBandsUpdate>(options, &out, &context, reader.get(), Render);
 }
