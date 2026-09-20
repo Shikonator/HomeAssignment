@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <fstream>
 #include <memory>
 #include <span>
 #include <algorithm>
@@ -29,7 +30,8 @@ struct ClientOptions {
   std::string instrument;
   std::uint32_t min_interval_micros = 0;
   bool json = false;
-  int max_updates = 0;  // 0 = run forever; used by the end-to-end tests
+  std::string out_file;  // empty = stdout only
+  int max_updates = 0;   // 0 = run forever; used by the end-to-end tests
 };
 
 // Flags every publisher accepts. `extra` carries the band overrides that only
@@ -37,7 +39,7 @@ struct ClientOptions {
 inline void RequireKnownClientFlags(const Flags& flags,
                                     std::initializer_list<std::string_view> extra = {}) {
   std::vector<std::string_view> known{"server", "instrument", "min-interval-us",
-                                      "json",   "max-updates", "quiet"};
+                                      "json",   "max-updates", "quiet", "out-file"};
   known.insert(known.end(), extra.begin(), extra.end());
   flags.RequireKnown(std::span<const std::string_view>(known));
 }
@@ -52,6 +54,7 @@ inline ClientOptions ParseClientOptions(const Flags& flags) {
   options.min_interval_micros =
       static_cast<std::uint32_t>(flags.GetInt("min-interval-us", 0, 0, 60'000'000));
   options.json = flags.GetBool("json", false);
+  options.out_file = flags.Get("out-file", "");
   options.max_updates = flags.GetInt("max-updates", 0, 0, 1'000'000);
   return options;
 }
@@ -93,21 +96,20 @@ inline std::shared_ptr<grpc::Channel> Connect(const std::string& server) {
   return channel;
 }
 
-inline void PrintJson(const google::protobuf::Message& message) {
+inline std::string ToJson(const google::protobuf::Message& message) {
   std::string out;
   google::protobuf::util::JsonPrintOptions print_options;
   print_options.always_print_fields_with_no_presence = true;
   const absl::Status status =
       google::protobuf::util::MessageToJsonString(message, &out, print_options);
-  if (status.ok()) {
-    std::printf("%s\n", out.c_str());
-    return;
+  if (!status.ok()) {
+    // --json exists so a script can consume this stream. Emitting nothing and
+    // saying nothing is the worst available failure for that.
+    std::fprintf(stderr, "failed to serialise update as JSON: %s\n",
+                 std::string(status.message()).c_str());
+    return {};
   }
-  // --json exists so a script can consume this stream. Emitting nothing and
-  // saying nothing is the worst available failure for that: the consumer sees
-  // an empty pipe with no reason.
-  std::fprintf(stderr, "failed to serialise update as JSON: %s\n",
-               std::string(status.message()).c_str());
+  return out + "\n";
 }
 
 // Fixed-width so a stream of these reads as a table rather than ragged text.
@@ -139,21 +141,42 @@ inline std::string Bps(std::int64_t bps_e8) {
 // specification's "50bps/100bps/..." rather than "50.00bps".
 inline std::string BpsLabel(std::int64_t bps_e8) { return FormatFixed(bps_e8, 0); }
 
+// Writes each rendered record to stdout and, when --out-file is set, appends
+// the same bytes to that file. Rendering goes through one buffer so the two
+// destinations cannot drift apart.
+class Output {
+ public:
+  explicit Output(const std::string& path) {
+    if (!path.empty()) {
+      file_.open(path, std::ios::out | std::ios::app);
+      if (!file_) std::fprintf(stderr, "cannot open %s for writing\n", path.c_str());
+    }
+  }
+
+  void Write(const std::string& record) {
+    std::fputs(record.c_str(), stdout);
+    // One flush per record, so Docker's combined log does not interleave
+    // three services mid-record.
+    std::fflush(stdout);
+    if (file_.is_open()) {
+      file_ << record;
+      file_.flush();
+    }
+  }
+
+ private:
+  std::ofstream file_;
+};
+
 // Drives a server-streaming RPC: read, render, flush, honour --max-updates.
 // Rendering is the only thing the three publishers do differently.
 template <typename Update, typename Reader, typename Render>
 int StreamLoop(const ClientOptions& options, Reader* reader, Render render) {
+  Output out(options.out_file);
   Update update;
   int count = 0;
   while (reader->Read(&update)) {
-    if (options.json) {
-      PrintJson(update);
-    } else {
-      render(update);
-    }
-    // One flush per record, so Docker's combined log does not interleave
-    // three services mid-record.
-    std::fflush(stdout);
+    out.Write(options.json ? ToJson(update) : render(update));
     if (options.max_updates > 0 && ++count >= options.max_updates) break;
   }
   const grpc::Status status = reader->Finish();
@@ -162,6 +185,15 @@ int StreamLoop(const ClientOptions& options, Reader* reader, Render render) {
     return 1;
   }
   return 0;
+}
+
+// printf into a std::string, so renderers can compose a record and hand it to
+// Output rather than each writing to stdout themselves.
+template <typename... Args>
+std::string Line(const char* format, Args... args) {
+  char buffer[512];
+  std::snprintf(buffer, sizeof(buffer), format, args...);
+  return std::string(buffer) + "\n";
 }
 
 // "binance:1.50000000 okx:0.50000000 " for a quote's venue attribution.

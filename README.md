@@ -396,7 +396,7 @@ clusters (the host VM losing network overnight); the rest were venue-initiated.
 aggregator:  --listen --instrument --venues --snapshot-limit --staleness-ms
              --max-publish-bps --ca-file --record-dir
              --binance-ws --binance-rest --okx-ws --bybit-ws --okx-symbol
-clients:     --server --venues --instrument --min-interval-us --json
+clients:     --server --instrument --min-interval-us --json --out-file
              --max-updates --bands-usd --bands-bps
 ```
 
@@ -415,7 +415,7 @@ message naming the flag, the rule and the offending value.
 | BBO client | `src/clients/bbo_main.cc` | integration, live run |
 | Volume bands 1M–50M+ | `src/clients/volume_bands_main.cc` | `analytics_test`, conformance, live run |
 | Price bands 50–1000bps+ | `src/clients/price_bands_main.cc` | `analytics_test`, conformance, live run |
-| Publish to stdout | all three clients | live run |
+| Publish to stdout | all three clients; `--out-file` also appends to a file | live run |
 | C++ implementation | C++20 throughout | no `py_*` rules in the build |
 | Docker file per service | `docker/Dockerfile`, five stages | `docker compose build` |
 | Compose, single host | `docker/docker-compose.yml` | `docker compose up`, 8h soak |

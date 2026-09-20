@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
 
   if (!quiet) {
     if (options.json) {
-      md::PrintJson(response);
+      std::fputs(md::ToJson(response).c_str(), stdout);
     } else {
       std::printf("published=%llu  latency p50=%lldus p99=%lldus max=%lldus  uptime=%llds\n",
                   static_cast<unsigned long long>(response.published_snapshots()),
