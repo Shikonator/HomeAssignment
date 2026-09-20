@@ -8,6 +8,10 @@
 namespace md {
 namespace {
 constexpr std::size_t kLatencySamples = 4096;
+
+// Upper bound on batches folded in before publishing. Comfortably above what
+// three venues produce in one cycle; anything left over is drained next pass.
+constexpr int kMaxBatchesPerPass = 256;
 }  // namespace
 
 Engine::Engine(EngineConfig config, std::vector<VenueFeed> venues)
@@ -56,9 +60,17 @@ void Engine::Run() {
   FeedBatch batch;
   while (!stopping_.load(std::memory_order_relaxed)) {
     bool changed = false;
+    // Bounded so the drain cannot starve the publish. In practice a venue can
+    // never outrun us -- the producer parses JSON per item while the consumer
+    // only applies levels, and venue rates are bounded by the exchange at a few
+    // messages a second -- but that is an argument about relative speed, not a
+    // guarantee. The bound makes termination structural, and also stops a burst
+    // on one venue delaying the publish that carries the other two.
+    int drained = 0;
     for (const VenueFeed& venue : venues_) {
-      while (venue.ring->Pop(&batch)) {
+      while (drained < kMaxBatchesPerPass && venue.ring->Pop(&batch)) {
         Apply(&batch);
+        ++drained;
         changed = true;
       }
     }

@@ -35,13 +35,3 @@ build_flags:
 
 test_sources:
   test/*
-
-# bazel-* are symlinks into the output base. Indexing them would pull in every
-# external dependency's source and make the project unusably slow.
-exclude_directories:
-  bazel-bin
-  bazel-out
-  bazel-testlogs
-  bazel-hermeneutic
-  cmake-build-debug
-  .idea
