@@ -159,6 +159,79 @@ everything about one stream reads in one place.
 validation, snapshot reconciliation and resync triggers are pure logic, tested
 from recorded bytes with no network.
 
+## How it runs
+
+```
+ VENUE THREAD (binance)    VENUE THREAD (okx)     VENUE THREAD (bybit)
+ one io_context each       one io_context each    one io_context each
+ socket · JSON · sequence  socket · JSON · sequence   socket · JSON · sequence
+ owns NO book              owns NO book           owns NO book
+        │                         │                       │
+        │  FeedUpdate batch       │                       │
+        ▼                         ▼                       ▼
+   ┌─────────┐              ┌─────────┐             ┌─────────┐
+   │  SPSC   │              │  SPSC   │             │  SPSC   │   lock-free
+   └─────────┘              └─────────┘             └─────────┘
+        └─────────────────────────┼───────────────────────┘
+                                  ▼
+                       ENGINE THREAD  (exactly one)
+                       owns ALL THREE venue books
+                       drain → apply → merge → publish
+                                  │
+                       ConsolidatedBook (immutable, shared_ptr)
+                                  │
+                ┌─────────────────┼─────────────────┐
+                ▼                 ▼                 ▼
+          ConflatingSlot    ConflatingSlot    ConflatingSlot
+          gRPC handler      gRPC handler      gRPC handler
+```
+
+**Threads, with three venues and three subscribers:** one main (blocked in
+`Server::Wait`), three venue, one engine, one shutdown watcher, and one gRPC
+handler per active stream. The count scales with venues and subscribers, never
+with market activity.
+
+**Nobody owns "a" book — the engine thread owns all three.** A venue thread
+never touches a book, not even its own; it parses and hands deltas over a ring.
+So `books_` needs no mutex, no atomic, nothing: single writer by construction.
+
+That split puts the expensive work (TLS, JSON, sequence validation) on threads
+that parallelise across cores, and the shared work (apply, merge) on one thread
+where it needs no synchronisation. If venue threads wrote into the books you
+would need a lock around every apply and around the merge — and the merge holds
+it longest, so all three venues would block on each other during it.
+
+**The loop**, `Engine::Run`:
+
+```
+drain every ring completely   →  if anything arrived      publish
+                                 else if heartbeat due    publish anyway
+                                 else                     sleep 200us
+```
+
+Draining all three rings before publishing means a burst across venues
+coalesces into one snapshot rather than three. The heartbeat is what makes
+staleness observable: staleness is computed inside `Publish`, so without it the
+one case it exists to report — every venue silent — is the case where nothing is
+published and no client is ever told.
+
+Polling rather than a condition variable is deliberate. A condvar needs the
+venue threads to signal, which puts a lock on the ingest hot path to save a
+wakeup that costs nothing; 200 us against feeds that publish every 100 ms is
+noise.
+
+**The two queues run opposite policies**, and the asymmetry is the point:
+
+| | carries | on overload |
+|---|---|---|
+| venue → engine (`SpscRing`) | deltas | **never drops** — push fails, caller resyncs |
+| engine → subscriber (`ConflatingSlot`) | absolute state | **always drops** — keeps only the newest |
+
+Losing a delta corrupts the book permanently and undetectably. Losing an
+intermediate snapshot costs a subscriber resolution and nothing else — and is
+in fact *more* timely than queueing, which would hand a lagging subscriber a
+stale state rather than the current one.
+
 ## Design decisions
 
 Interpretation choices are under [Assumptions](#assumptions); these are
@@ -171,9 +244,6 @@ scale travels on the wire.
 **Sorted vectors, not `std::map`.** The hot loop is a sequential merge scan.
 Venue books are never truncated internally — dropping deep levels would make a
 later update indistinguishable from an insert.
-
-**One writer per book.** One thread per venue parses in parallel and hands
-deltas over a lock-free SPSC ring; one aggregation thread owns every book.
 
 **Conflation is safe downstream, unsafe upstream.** Downstream carries absolute
 state, so overwriting loses resolution and nothing else — and is *more* timely
