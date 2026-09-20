@@ -1,0 +1,47 @@
+# Project view for the JetBrains Bazel plugin (CLion / IntelliJ).
+#
+# Import with: File > Open > select this file, or
+#              File > New > Project from Existing Sources > Bazel.
+#
+# Without this, CLion has no CMake to read and will not index the project at
+# all -- C++ navigation, go-to-definition and find-usages are all dead.
+
+directories:
+  src
+  proto
+  test
+  tools
+
+# Everything, so the generated protobuf and gRPC headers are indexed too.
+# Without the proto targets, ctrl-click on BboUpdate or MarketData::Stub goes
+# nowhere, because those classes only exist after a build.
+targets:
+  //src/...
+  //proto/...
+  //test/...
+  //tools/...
+
+derive_targets_from_directories: true
+
+additional_languages:
+  c
+
+# Inherited from .bazelrc, repeated here because the plugin builds with its own
+# flag set and these are not optional:
+#   --@boost.asio//:ssl=boringssl   one TLS stack; without it, duplicate SSL_*
+#   -c opt                          the .bazelrc default
+build_flags:
+  --@boost.asio//:ssl=boringssl
+
+test_sources:
+  test/*
+
+# bazel-* are symlinks into the output base. Indexing them would pull in every
+# external dependency's source and make the project unusably slow.
+exclude_directories:
+  bazel-bin
+  bazel-out
+  bazel-testlogs
+  bazel-hermeneutic
+  cmake-build-debug
+  .idea
