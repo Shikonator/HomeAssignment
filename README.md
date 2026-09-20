@@ -46,50 +46,92 @@ bazel-bin/src/clients/status_client       --server=127.0.0.1:50051
 
 All three venues reach `LIVE` in about 1.5 seconds.
 
-## What you will see first
+## Assumptions
 
-Two of the numbers the assignment asks for often cannot be answered, because
-the liquidity to answer them is not there. The system says so explicitly instead
-of returning a misleading figure, so **this is expected output, not a bug**:
+The brief leaves several things open. Every choice we made, and why.
 
-* **`fully_filled=false` on the 50M volume band.** That band asks "if I traded
-  50 million dollars right now, what average price would I get?" Usually there
-  is nowhere near 50M of resting liquidity, so the honest answer is "you could
-  not trade that much — here is what you could trade, and at what price".
+**Spot, not perpetual futures.** The brief allows either. All three venues
+publish full-depth spot books with no API key, so this runs with nothing but
+network access.
+
+**Binance, OKX and Bybit.** Chosen partly because they sequence differently —
+Binance needs a REST snapshot reconciled against a diff stream, the other two
+snapshot over the socket itself — so the venue layer had to handle genuinely
+different models rather than three copies of one.
+
+**`50M+` and `1000bps+` are real, open-ended bands.** The brief writes the last
+threshold of each set with a trailing `+`. We read that as a sixth band covering
+everything beyond the last named threshold, rather than as decoration on the
+fifth. So the volume set is 1M/5M/10M/25M/50M **and** "everything available",
+and the same for bps.
+
+**Bands are cumulative from the touch.** The 5M band describes sweeping 5M
+starting at the best price — not the slice between 1M and 5M. "5M band" is
+genuinely ambiguous otherwise.
+
+**Price bands measure from the own-side touch**, not from mid. Mid is emitted
+alongside so a consumer can reinterpret without guessing.
+
+**Notional is quote currency.** $1M means 1,000,000 USDT, not 1M BTC.
+
+**Crossed books are reported, not corrected.** Three venues publishing at
+different cadences means the best bid sometimes exceeds the best ask. We emit a
+signed spread and a `crossed` flag rather than hiding it; correcting it would
+need a per-venue fee and latency model, which is a trading assumption we should
+not bake into a data service.
+
+### The published book stops 500 bps from the touch
+
+This one has the most consequences, so it gets its own explanation.
+
+We do not receive one snapshot — we receive a live stream of changes and
+maintain the book from it. Over hours that accumulates stale far-away orders:
+someone offering to sell at $96,000 while the market is at $81,000, never
+cancelled. Two things go wrong if we publish those:
+
+* **The answer depends on our uptime.** A process running an hour holds more
+  junk than one started a minute ago, so two copies disagree about the same
+  market at the same instant. That is broken for a data service.
+* **The answer stops being a price.** A $50M trade "fills" only by sweeping
+  8–25% through the book at several percent slippage. Arithmetically true,
+  economically meaningless.
+
+So the published book is cut off 500 bps (5%) from the best price
+(`--max-publish-bps`). Internal books stay full depth, because truncating those
+would break how updates are applied.
+
+The cutoff is generous rather than convenient: widening it fivefold (from ~106
+to 500 bps) adds only ~9% more liquidity, so nothing hinges on where exactly the
+line sits.
+
+### Two bands often cannot be answered, and we say so
+
+`fully_filled` and `depth_limited` exist for this, and it is expected output
+rather than a defect:
+
+* **`fully_filled=false` on the 50M band.** That band asks "if I traded $50M
+  right now, what average price would I get?" There is usually nowhere near $50M
+  of resting liquidity, so the honest answer is "you could not trade that much —
+  here is what you could, and at what price".
 * **`depth_limited=true` on the wider bps bands.** Those ask "how much liquidity
-  sits within X% of the best price?" The exchanges only publish their books a
-  short distance out — roughly 1% — so for 2%, 5% and 10% the true answer is
-  "further than anything we can see".
+  sits within X% of the best price?" The venues publish roughly 1% of their
+  books, so for 2%, 5% and 10% the true answer lies beyond anything we can see.
 
-Which of these you see changes minute to minute, so read the flags on each
-message rather than assuming from this document.
-
-**Why the book is cut off at 500 bps.** Venue books are never truncated
-internally, so the diff stream keeps accumulating price levels far outside any
-snapshot for as long as the process runs. If we published all of that, every
-number would depend on how long our process had been up, and a 50M trade would
-"fill" only by sweeping 8-25% through the book at several percent slippage —
-not a price anyone would trade at. So the published book stops 500 bps (5%) from
-the best price (`--max-publish-bps`).
-
-Over 2,748 consecutive published states:
+Which you see changes minute to minute. Over 2,748 consecutive published states:
 
 | side | filled 50M | why |
 |---|---|---|
-| bid | 0 of 2,748 (0.0%) | no wall in range |
+| bid | 0 of 2,748 (0.0%) | no large order in range |
 | ask | 934 of 2,748 (34.0%) | round-number sell walls — 85,000 in 652 of them |
 
-The two sides differ because filling 50M on the ask depends on a large
-round-number sell order happening to sit within range, which comes and goes.
-**That is why `fully_filled` is reported on every band of every message** rather
-than being something a client could look up once. The smaller bands
-(1M/5M/10M/25M) fill reliably, and the trailing open-ended band (`50M+`) always
-reports whatever liquidity does exist.
+Filling 50M on the ask depends on a large round-number order happening to sit in
+range, which comes and goes. **That is why these flags are on every band of
+every message** rather than being something a client could look up once. The
+smaller bands (1M/5M/10M/25M) fill reliably.
 
-The conclusion is robust to both obvious objections. Widening the window
-fivefold (106 -> 500 bps) adds only ~9% liquidity, and two snapshot captures a
-day apart — bid depth fell 30%, ask rose 17% — never came within $11M of 50M.
-Regenerate with `python3 test/conformance/reference/measure_depth.py`.
+Two snapshot captures a day apart — bid depth fell 30%, ask rose 17% — never
+came within $11M of 50M. Regenerate with
+`python3 test/conformance/reference/measure_depth.py`.
 
 ## Layout
 
@@ -115,6 +157,9 @@ from recorded bytes with no network.
 
 ## Design decisions
 
+Interpretation choices are under [Assumptions](#assumptions); these are
+implementation ones.
+
 **Fixed-point, not double.** `int64` scaled 1e8. A price of 100,000 times 0.01
 BTC already overflows `int64`, so every product routes through `__int128`. The
 scale travels on the wire.
@@ -131,17 +176,12 @@ state, so overwriting loses resolution and nothing else — and is *more* timely
 than a queue, which hands a lagging subscriber a stale state. Upstream carries
 deltas, so the ring never drops: on a full ring the runner resyncs.
 
-**Crossed books are reported, not clamped.** Three venues at different cadences
-means `best_bid >= best_ask` happens routinely. Signed spread, `crossed` flag,
-per-venue attribution. Fee-adjusting would bake a trading assumption into a data
-service.
-
 **Venue filtering is free** — per-level attribution is required by staleness
 exclusion anyway, which is the identical operation.
 
-**Bands are one outward walk**, cumulative from the touch, boundary level
-consumed partially, so `filled_qty x vwap == filled_notional`. Thresholds are
-client-supplied.
+**Both band families are computed in one outward walk** of the ladder, with the
+boundary level consumed partially so `filled_qty x vwap == filled_notional`.
+Thresholds are client-supplied with server defaults.
 
 **One TLS stack.** gRPC links BoringSSL, Boost.Asio defaults to OpenSSL, both
 export `SSL_*`. `.bazelrc` sets `--@boost.asio//:ssl=boringssl`;
