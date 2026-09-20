@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package md.v1;
+
+import "proto/md/v1/common.proto";
+
+// Best bid and offer of the consolidated book.
+service Bbo {
+  rpc Stream(StreamBboRequest) returns (stream BboUpdate);
+}
+
+message StreamBboRequest {
+  Subscription subscription = 1;
+}
+
+message BboUpdate {
+  SnapshotMeta meta = 1;
+  Touch touch = 2;
+  Quote bid = 3;
+  Quote ask = 4;
+
+  reserved 5 to 15;
+}

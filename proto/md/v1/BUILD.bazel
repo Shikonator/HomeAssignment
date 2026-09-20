@@ -4,19 +4,58 @@ load("@protobuf//bazel:proto_library.bzl", "proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
+# Shared message types. No service, so no grpc target.
 proto_library(
-    name = "market_data_proto",
-    srcs = ["market_data.proto"],
+    name = "common_proto",
+    srcs = ["common.proto"],
 )
 
 cc_proto_library(
-    name = "market_data_cc_proto",
-    deps = [":market_data_proto"],
+    name = "common_cc_proto",
+    deps = [":common_proto"],
+)
+
+# One service per view. Each file holds its service, its request and its
+# response, so everything about one stream reads in one place.
+[
+    [
+        proto_library(
+            name = view + "_proto",
+            srcs = [view + ".proto"],
+            deps = [":common_proto"],
+        ),
+        cc_proto_library(
+            name = view + "_cc_proto",
+            deps = [":" + view + "_proto"],
+        ),
+        cc_grpc_library(
+            name = view + "_cc_grpc",
+            srcs = [":" + view + "_proto"],
+            grpc_only = True,
+            deps = [":" + view + "_cc_proto"],
+        ),
+    ]
+    for view in [
+        "bbo",
+        "volume_bands",
+        "price_bands",
+    ]
+]
+
+# Status shares no messages with the streams.
+proto_library(
+    name = "status_proto",
+    srcs = ["status.proto"],
+)
+
+cc_proto_library(
+    name = "status_cc_proto",
+    deps = [":status_proto"],
 )
 
 cc_grpc_library(
-    name = "market_data_cc_grpc",
-    srcs = [":market_data_proto"],
+    name = "status_cc_grpc",
+    srcs = [":status_proto"],
     grpc_only = True,
-    deps = [":market_data_cc_proto"],
+    deps = [":status_cc_proto"],
 )

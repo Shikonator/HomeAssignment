@@ -11,7 +11,10 @@
 #include <string>
 
 #include "google/protobuf/util/json_util.h"
-#include "proto/md/v1/market_data.grpc.pb.h"
+#include "proto/md/v1/bbo.grpc.pb.h"
+#include "proto/md/v1/price_bands.grpc.pb.h"
+#include "proto/md/v1/status.grpc.pb.h"
+#include "proto/md/v1/volume_bands.grpc.pb.h"
 #include "src/common/flags.h"
 #include "src/core/clock.h"
 #include "src/core/fixed.h"

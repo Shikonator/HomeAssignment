@@ -160,13 +160,19 @@ int main(int argc, char** argv) {
   engine.Start();
   for (auto& runner : runners) runner->Start();
 
-  md::MarketDataService service(&engine);
+  md::BboService bbo_service(&engine);
+  md::VolumeBandsService volume_bands_service(&engine);
+  md::PriceBandsService price_bands_service(&engine);
+  md::StatusService status_service(&engine);
 
   grpc::EnableDefaultHealthCheckService(true);
   grpc::reflection::InitProtoReflectionServerBuilderPlugin();
   grpc::ServerBuilder builder;
   builder.AddListeningPort(listen, grpc::InsecureServerCredentials());
-  builder.RegisterService(&service);
+  builder.RegisterService(&bbo_service);
+  builder.RegisterService(&volume_bands_service);
+  builder.RegisterService(&price_bands_service);
+  builder.RegisterService(&status_service);
 
   // Keepalive so a peer that stops reading is reaped rather than parking a
   // handler thread forever. A synchronous server-streaming Write() blocks

@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
   md::RequireKnownClientFlags(flags, {"bands-bps"});
   const md::ClientOptions options = md::ParseClientOptions(flags);
 
-  auto stub = md::v1::MarketData::NewStub(md::Connect(options.server));
+  auto stub = md::v1::PriceBands::NewStub(md::Connect(options.server));
   md::v1::StreamPriceBandsRequest request;
   md::FillSubscription(options, request.mutable_subscription());
   for (const std::string& band : md::SplitCsv(flags.Get("bands-bps", ""))) {
@@ -46,6 +46,6 @@ int main(int argc, char** argv) {
   }
 
   grpc::ClientContext context;
-  auto reader = stub->StreamPriceBands(&context, request);
+  auto reader = stub->Stream(&context, request);
   return md::StreamLoop<md::v1::PriceBandsUpdate>(options, reader.get(), Print);
 }

@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package md.v1;
+
+import "proto/md/v1/common.proto";
+
+// "How much liquidity rests within X bps of the touch?"
+//
+// CUMULATIVE FROM THE TOUCH, and measured from the OWN-SIDE touch (best_bid for
+// bid bands, best_ask for ask bands). Touch.mid_price_e8 is emitted alongside so
+// a consumer can reinterpret against mid without guessing.
+service PriceBands {
+  rpc Stream(StreamPriceBandsRequest) returns (stream PriceBandsUpdate);
+}
+
+message StreamPriceBandsRequest {
+  Subscription subscription = 1;
+
+  // Offsets in bps scaled 1e8 (50 bps -> 5000000000), so 12.5 bps is
+  // expressible. Empty uses the server default set (50/100/200/500/1000).
+  //
+  // Must be positive, distinct, and at most 32; otherwise INVALID_ARGUMENT. An
+  // offset wider than the ladder is NOT an error -- that is answered by
+  // depth_limited = true on the band.
+  //
+  // The server always appends one open-ended band (the spec's "1000bps+").
+  repeated int64 offsets_bps_e8 = 2;
+}
+
+message PriceBand {
+  int64 offset_bps_e8 = 1;
+
+  // Inclusive worst price of the band:
+  //   bid: best_bid * (1 - bps/1e4), rounded DOWN
+  //   ask: best_ask * (1 + bps/1e4), rounded UP
+  // Outward on both sides, so a level resting exactly on the boundary is
+  // treated identically either way.
+  int64 bound_price_e8 = 2;
+
+  // Cumulative from the touch out to bound_price_e8.
+  int64 qty_e8 = 3;
+  int64 notional_e8 = 4;
+  int64 vwap_price_e8 = 5;
+  int32 levels = 6;
+
+  // Covers everything beyond the largest finite offset. Its offset_bps_e8 is 0
+  // and its bound_price_e8 is the worst price actually present.
+  bool open_ended = 7;
+
+  // The ladder ended before bound_price_e8 was reached, so this band reports all
+  // available depth rather than depth within the requested offset. Expected for
+  // wide offsets. Always FALSE for the open-ended band.
+  bool depth_limited = 8;
+
+  reserved 9 to 15;
+}
+
+message PriceBandsUpdate {
+  SnapshotMeta meta = 1;
+  Touch touch = 2;
+  repeated PriceBand bid = 3;
+  repeated PriceBand ask = 4;
+
+  reserved 5 to 15;
+}

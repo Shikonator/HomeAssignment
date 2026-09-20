@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package md.v1;
+
+// Shared types for every market-data stream.
+//
+// NUMERIC: every `*_e8` field is a signed integer scaled by 1e8.
+//   100000.25 USDT -> 10000025000000     0.5 BTC -> 50000000     1.25 bps -> 125000000
+// Divisions truncate toward zero. Notional is quote currency (USDT), sum(price * qty).
+// The scale is also sent in SnapshotMeta so a client never hardcodes it.
+//
+// TIME: every `*_ts_ns` is Unix epoch nanoseconds. `recv` is stamped locally and is
+// the only clock used for staleness; `exchange` is the venue's own, never trusted
+// for ordering.
+//
+// DELIVERY: streams conflate. A subscriber that cannot keep up is sent the newest
+// state, not a backlog, so `meta.sequence` may skip -- a gap means conflation, not
+// loss. Safe here because every message carries absolute state.
+
+// Options shared by every streaming RPC.
+message Subscription {
+  // Empty defaults to the server's instrument. An unaggregated symbol is
+  // INVALID_ARGUMENT.
+  string instrument = 1;
+
+  // Restrict to these venues (lower-case). Empty means all. An unknown name is
+  // INVALID_ARGUMENT, so a typo is never silently ignored.
+  repeated string venues = 2;
+
+  // Lower bound on the interval between updates. 0 sends every published state.
+  uint32 min_interval_micros = 3;
+}
+
+// Per-venue contribution at one price, so a consumer can see who sets the touch.
+message VenueQty {
+  string venue = 1;
+  int64 qty_e8 = 2;
+}
+
+message Quote {
+  // 0 when no contributing venue has liquidity on this side.
+  int64 price_e8 = 1;
+  // Summed across contributing venues.
+  int64 qty_e8 = 2;
+  repeated VenueQty venues = 3;
+}
+
+// The touch of the consolidated book, echoed on every stream so band numbers can
+// be interpreted without a second subscription.
+message Touch {
+  // False when no contributing venue has that side -- reachable before the first
+  // venue syncs, when all are stale, and in filtered views.
+  //
+  // WHEN EITHER SIDE IS ABSENT, mid_price_e8, spread_e8 and spread_bps_e8 are 0
+  // and `crossed` is false. They are never computed from a zero price.
+  bool has_bid = 1;
+  bool has_ask = 2;
+
+  int64 best_bid_e8 = 3;
+  int64 best_ask_e8 = 4;
+
+  // (bid + ask) / 2. The only stable reference when the book is crossed.
+  int64 mid_price_e8 = 5;
+
+  // ask - bid. SIGNED: negative when crossed.
+  int64 spread_e8 = 6;
+  // Spread relative to mid, in bps scaled 1e8. Signed.
+  int64 spread_bps_e8 = 7;
+
+  // best_bid >= best_ask. A NORMAL condition, not an error: independent venues
+  // publish at different cadences, so the touch is always a blend of instants.
+  // Never clamped, suppressed or fee-adjusted. See README, "Crossed books".
+  bool crossed = 8;
+
+  reserved 9 to 15;
+}
+
+// The consolidated book is a blend of several instants; this is the skew.
+message VenueClock {
+  string venue = 1;
+  int64 last_recv_ts_ns = 2;
+  int64 last_exchange_ts_ns = 3;
+}
+
+// Provenance carried by every update.
+message SnapshotMeta {
+  string instrument = 1;
+  // Monotonic publication counter. May skip; see DELIVERY above.
+  uint64 sequence = 2;
+  int64 publish_ts_ns = 3;
+  // Newest venue receipt folded into this state. publish - ingest is the
+  // aggregator's internal latency.
+  int64 ingest_recv_ts_ns = 4;
+
+  repeated string contributing_venues = 5;
+  // Excluded: disconnected, resyncing, or silent past the staleness timeout.
+  // Non-empty means degraded but usable.
+  repeated string stale_venues = 6;
+  repeated VenueClock venue_clocks = 7;
+
+  // Both 100000000. Sent so clients never hardcode the scale.
+  int64 price_scale = 8;
+  int64 qty_scale = 9;
+
+  // The ladder stopped at the configured publish depth rather than the end of
+  // the books. Distinct from PriceBand.depth_limited, which asks whether one
+  // band's bound outran the ladder.
+  bool bid_ladder_truncated = 10;
+  bool ask_ladder_truncated = 11;
+
+  reserved 12 to 20;
+}

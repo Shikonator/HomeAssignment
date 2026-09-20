@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
   md::RequireKnownClientFlags(flags, {"bands-usd"});
   const md::ClientOptions options = md::ParseClientOptions(flags);
 
-  auto stub = md::v1::MarketData::NewStub(md::Connect(options.server));
+  auto stub = md::v1::VolumeBands::NewStub(md::Connect(options.server));
   md::v1::StreamVolumeBandsRequest request;
   md::FillSubscription(options, request.mutable_subscription());
   // Bands are a property of the request, not the build.
@@ -47,6 +47,6 @@ int main(int argc, char** argv) {
   }
 
   grpc::ClientContext context;
-  auto reader = stub->StreamVolumeBands(&context, request);
+  auto reader = stub->Stream(&context, request);
   return md::StreamLoop<md::v1::VolumeBandsUpdate>(options, reader.get(), Print);
 }

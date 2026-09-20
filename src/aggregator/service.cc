@@ -185,7 +185,7 @@ std::vector<std::int64_t> DefaultBpsOffsets() {
   return {50 * kScale, 100 * kScale, 200 * kScale, 500 * kScale, 1000 * kScale};
 }
 
-grpc::Status MarketDataService::ResolveSubscription(const v1::Subscription& subscription,
+grpc::Status StreamingBase::ResolveSubscription(const v1::Subscription& subscription,
                                                     VenueMask* mask, bool* filtered) const {
   const std::string& instrument = subscription.instrument();
   if (!instrument.empty() && instrument != engine_->config().instrument) {
@@ -232,7 +232,7 @@ grpc::Status MarketDataService::ResolveSubscription(const v1::Subscription& subs
   return grpc::Status::OK;
 }
 
-grpc::Status MarketDataService::RunStream(
+grpc::Status StreamingBase::RunStream(
     grpc::ServerContext* context, const v1::Subscription& subscription,
     const std::function<bool(const ConsolidatedBook&, VenueMask, bool)>& emit) {
   VenueMask mask = 0;
@@ -288,9 +288,9 @@ grpc::Status MarketDataService::RunStream(
   return grpc::Status::OK;
 }
 
-grpc::Status MarketDataService::StreamBbo(grpc::ServerContext* context,
-                                          const v1::StreamBboRequest* request,
-                                          grpc::ServerWriter<v1::BboUpdate>* writer) {
+grpc::Status BboService::Stream(grpc::ServerContext* context,
+                                const v1::StreamBboRequest* request,
+                                grpc::ServerWriter<v1::BboUpdate>* writer) {
   return RunStream(context, request->subscription(),
                    [&](const ConsolidatedBook& book, VenueMask mask, bool filtered) {
                      v1::BboUpdate update;
@@ -302,9 +302,9 @@ grpc::Status MarketDataService::StreamBbo(grpc::ServerContext* context,
                    });
 }
 
-grpc::Status MarketDataService::StreamVolumeBands(
-    grpc::ServerContext* context, const v1::StreamVolumeBandsRequest* request,
-    grpc::ServerWriter<v1::VolumeBandsUpdate>* writer) {
+grpc::Status VolumeBandsService::Stream(grpc::ServerContext* context,
+                                        const v1::StreamVolumeBandsRequest* request,
+                                        grpc::ServerWriter<v1::VolumeBandsUpdate>* writer) {
   BandConfig config;
   const grpc::Status valid = MakeVolumeConfig(*request, &config);
   if (!valid.ok()) return valid;
@@ -323,9 +323,9 @@ grpc::Status MarketDataService::StreamVolumeBands(
                    });
 }
 
-grpc::Status MarketDataService::StreamPriceBands(
-    grpc::ServerContext* context, const v1::StreamPriceBandsRequest* request,
-    grpc::ServerWriter<v1::PriceBandsUpdate>* writer) {
+grpc::Status PriceBandsService::Stream(grpc::ServerContext* context,
+                                       const v1::StreamPriceBandsRequest* request,
+                                       grpc::ServerWriter<v1::PriceBandsUpdate>* writer) {
   BandConfig config;
   const grpc::Status valid = MakePriceConfig(*request, &config);
   if (!valid.ok()) return valid;
@@ -344,7 +344,7 @@ grpc::Status MarketDataService::StreamPriceBands(
                    });
 }
 
-grpc::Status MarketDataService::GetVenueStatus(grpc::ServerContext* /*context*/,
+grpc::Status StatusService::GetVenueStatus(grpc::ServerContext* /*context*/,
                                                const v1::GetVenueStatusRequest* /*request*/,
                                                v1::GetVenueStatusResponse* response) {
   for (const VenueFeed& venue : engine_->venues()) {

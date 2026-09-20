@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package md.v1;
+
+import "proto/md/v1/common.proto";
+
+// "If I sweep N dollars of notional, what price do I get?"
+//
+// Bands are CUMULATIVE FROM THE TOUCH: the 5M band is sweeping 5M starting at
+// the best price, not the slice between 1M and 5M.
+service VolumeBands {
+  rpc Stream(StreamVolumeBandsRequest) returns (stream VolumeBandsUpdate);
+}
+
+message StreamVolumeBandsRequest {
+  Subscription subscription = 1;
+
+  // Notional targets in quote currency, scaled 1e8 (1M USDT -> 100000000000000).
+  // Empty uses the server default set (1M/5M/10M/25M/50M).
+  //
+  // Must be positive, distinct, and at most 32; otherwise INVALID_ARGUMENT. A
+  // target the book is too thin to fill is NOT an error -- that is answered by
+  // fully_filled = false on the band.
+  //
+  // The server always appends one open-ended band (the spec's "50M+").
+  repeated int64 notional_bands_e8 = 2;
+}
+
+message VolumeBand {
+  // Echoed so a consumer never matches by index. ZERO for the open-ended band,
+  // which has no target, keeping this field an unambiguous key.
+  int64 notional_target_e8 = 1;
+
+  // Quantity-weighted average fill price for the sweep.
+  int64 vwap_price_e8 = 2;
+  // Last level touched -- the marginal / worst price.
+  int64 worst_price_e8 = 3;
+
+  int64 filled_qty_e8 = 4;
+  int64 filled_notional_e8 = 5;
+
+  // False only when the BOOK ran out before the target was met. Partial
+  // consumption of the boundary level is normal and does NOT clear this.
+  // Always false for the open-ended band, where "target met" has no meaning.
+  bool fully_filled = 6;
+
+  int32 levels_consumed = 7;
+
+  // Sweeps all available liquidity rather than a finite target.
+  bool open_ended = 8;
+
+  reserved 9 to 15;
+}
+
+message VolumeBandsUpdate {
+  SnapshotMeta meta = 1;
+  Touch touch = 2;
+  // Sweeping resting bids (selling). Prices descend.
+  repeated VolumeBand bid = 3;
+  // Sweeping resting offers (buying). Prices ascend.
+  repeated VolumeBand ask = 4;
+
+  reserved 5 to 15;
+}

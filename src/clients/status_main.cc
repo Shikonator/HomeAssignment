@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
   const bool quiet = flags.GetBool("quiet", false);
 
   auto channel = grpc::CreateChannel(options.server, grpc::InsecureChannelCredentials());
-  auto stub = md::v1::MarketData::NewStub(channel);
+  auto stub = md::v1::Status::NewStub(channel);
 
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));

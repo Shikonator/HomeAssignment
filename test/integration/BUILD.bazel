@@ -7,6 +7,10 @@ cc_test(
     deps = [
         "//src/aggregator:engine",
         "//src/aggregator:service",
+        "//proto/md/v1:bbo_cc_grpc",
+        "//proto/md/v1:price_bands_cc_grpc",
+        "//proto/md/v1:status_cc_grpc",
+        "//proto/md/v1:volume_bands_cc_grpc",
         "@googletest//:gtest_main",
     ],
 )

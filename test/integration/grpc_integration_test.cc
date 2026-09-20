@@ -17,7 +17,10 @@
 #include <thread>
 #include <vector>
 
-#include "proto/md/v1/market_data.grpc.pb.h"
+#include "proto/md/v1/bbo.grpc.pb.h"
+#include "proto/md/v1/price_bands.grpc.pb.h"
+#include "proto/md/v1/status.grpc.pb.h"
+#include "proto/md/v1/volume_bands.grpc.pb.h"
 #include "src/aggregator/engine.h"
 #include "src/aggregator/service.h"
 #include "src/core/clock.h"
@@ -53,17 +56,27 @@ class GrpcIntegrationTest : public ::testing::Test {
     engine_ = std::make_unique<Engine>(config, std::move(feeds));
     engine_->Start();
 
-    service_ = std::make_unique<MarketDataService>(engine_.get());
+    bbo_service_ = std::make_unique<BboService>(engine_.get());
+    volume_service_ = std::make_unique<VolumeBandsService>(engine_.get());
+    price_service_ = std::make_unique<PriceBandsService>(engine_.get());
+    status_service_ = std::make_unique<StatusService>(engine_.get());
+
     grpc::ServerBuilder builder;
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
-    builder.RegisterService(service_.get());
+    builder.RegisterService(bbo_service_.get());
+    builder.RegisterService(volume_service_.get());
+    builder.RegisterService(price_service_.get());
+    builder.RegisterService(status_service_.get());
     server_ = builder.BuildAndStart();
     ASSERT_NE(server_, nullptr);
 
     const std::string address = "127.0.0.1:" + std::to_string(port);
-    stub_ = v1::MarketData::NewStub(
-        grpc::CreateChannel(address, grpc::InsecureChannelCredentials()));
+    auto channel = grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
+    bbo_ = v1::Bbo::NewStub(channel);
+    volume_ = v1::VolumeBands::NewStub(channel);
+    price_ = v1::PriceBands::NewStub(channel);
+    status_ = v1::Status::NewStub(channel);
 
     PushSnapshot();
     ASSERT_TRUE(WaitForContributors(2));
@@ -122,9 +135,15 @@ class GrpcIntegrationTest : public ::testing::Test {
   std::vector<std::unique_ptr<FeedRing>> rings_;
   std::vector<std::unique_ptr<VenueStats>> stats_;
   std::unique_ptr<Engine> engine_;
-  std::unique_ptr<MarketDataService> service_;
+  std::unique_ptr<BboService> bbo_service_;
+  std::unique_ptr<VolumeBandsService> volume_service_;
+  std::unique_ptr<PriceBandsService> price_service_;
+  std::unique_ptr<StatusService> status_service_;
   std::unique_ptr<grpc::Server> server_;
-  std::unique_ptr<v1::MarketData::Stub> stub_;
+  std::unique_ptr<v1::Bbo::Stub> bbo_;
+  std::unique_ptr<v1::VolumeBands::Stub> volume_;
+  std::unique_ptr<v1::PriceBands::Stub> price_;
+  std::unique_ptr<v1::Status::Stub> status_;
 };
 
 TEST_F(GrpcIntegrationTest, BboReportsConsolidatedTouchWithVenueAttribution) {
@@ -132,7 +151,7 @@ TEST_F(GrpcIntegrationTest, BboReportsConsolidatedTouchWithVenueAttribution) {
   v1::BboUpdate update;
   ASSERT_TRUE(ReadOne(
       [&](grpc::ClientContext* context, const v1::StreamBboRequest& r) {
-        return stub_->StreamBbo(context, r);
+        return bbo_->Stream(context, r);
       },
       request, &update));
 
@@ -160,7 +179,7 @@ TEST_F(GrpcIntegrationTest, MetadataCarriesScaleAndProvenance) {
   v1::BboUpdate update;
   ASSERT_TRUE(ReadOne(
       [&](grpc::ClientContext* context, const v1::StreamBboRequest& r) {
-        return stub_->StreamBbo(context, r);
+        return bbo_->Stream(context, r);
       },
       request, &update));
 
@@ -180,7 +199,7 @@ TEST_F(GrpcIntegrationTest, VolumeBandsSweepTheConsolidatedBook) {
   v1::VolumeBandsUpdate update;
   ASSERT_TRUE(ReadOne(
       [&](grpc::ClientContext* context, const v1::StreamVolumeBandsRequest& r) {
-        return stub_->StreamVolumeBands(context, r);
+        return volume_->Stream(context, r);
       },
       request, &update));
 
@@ -205,7 +224,7 @@ TEST_F(GrpcIntegrationTest, PriceBandsAccumulateFromTheTouch) {
   v1::PriceBandsUpdate update;
   ASSERT_TRUE(ReadOne(
       [&](grpc::ClientContext* context, const v1::StreamPriceBandsRequest& r) {
-        return stub_->StreamPriceBands(context, r);
+        return price_->Stream(context, r);
       },
       request, &update));
 
@@ -224,7 +243,7 @@ TEST_F(GrpcIntegrationTest, VenueFilterChangesWhatTheSubscriberSees) {
   v1::BboUpdate update;
   ASSERT_TRUE(ReadOne(
       [&](grpc::ClientContext* context, const v1::StreamBboRequest& r) {
-        return stub_->StreamBbo(context, r);
+        return bbo_->Stream(context, r);
       },
       request, &update));
 
@@ -242,7 +261,7 @@ TEST_F(GrpcIntegrationTest, UnknownVenueIsRejectedRatherThanIgnored) {
   request.mutable_subscription()->add_venues("kraken");
 
   grpc::ClientContext context;
-  auto reader = stub_->StreamBbo(&context, request);
+  auto reader = bbo_->Stream(&context, request);
   v1::BboUpdate update;
   EXPECT_FALSE(reader->Read(&update));
   const grpc::Status status = reader->Finish();
@@ -261,7 +280,7 @@ TEST_F(GrpcIntegrationTest, MalformedBandRequestsAreRejected) {
   const auto expect_rejected = [&](const v1::StreamVolumeBandsRequest& request,
                                    const char* because) {
     grpc::ClientContext context;
-    auto reader = stub_->StreamVolumeBands(&context, request);
+    auto reader = volume_->Stream(&context, request);
     v1::VolumeBandsUpdate update;
     EXPECT_FALSE(reader->Read(&update)) << because;
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::INVALID_ARGUMENT) << because;
@@ -278,7 +297,7 @@ TEST_F(GrpcIntegrationTest, MalformedBandRequestsAreRejected) {
     // The message names the offending value, not just the rule: with up to 32
     // bands per request, "one of your values is not positive" is much worse.
     grpc::ClientContext context;
-    auto reader = stub_->StreamVolumeBands(&context, negative);
+    auto reader = volume_->Stream(&context, negative);
     v1::VolumeBandsUpdate update;
     reader->Read(&update);
     EXPECT_NE(reader->Finish().error_message().find("-1"), std::string::npos);
@@ -302,7 +321,7 @@ TEST_F(GrpcIntegrationTest, UnfillableTargetIsAnsweredNotRejected) {
   v1::VolumeBandsUpdate update;
   ASSERT_TRUE(ReadOne(
       [&](grpc::ClientContext* context, const v1::StreamVolumeBandsRequest& r) {
-        return stub_->StreamVolumeBands(context, r);
+        return volume_->Stream(context, r);
       },
       request, &update));
   ASSERT_EQ(update.bid_size(), 2);
@@ -314,7 +333,7 @@ TEST_F(GrpcIntegrationTest, UnknownInstrumentIsRejected) {
   request.mutable_subscription()->set_instrument("ETHUSDT");
 
   grpc::ClientContext context;
-  auto reader = stub_->StreamBbo(&context, request);
+  auto reader = bbo_->Stream(&context, request);
   v1::BboUpdate update;
   EXPECT_FALSE(reader->Read(&update));
   EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::INVALID_ARGUMENT);
@@ -337,7 +356,7 @@ TEST_F(GrpcIntegrationTest, StaleVenuesAreReportedWhenTheFeedsGoQuiet) {
   v1::BboUpdate update;
   ASSERT_TRUE(ReadOne(
       [&](grpc::ClientContext* context, const v1::StreamBboRequest& r) {
-        return stub_->StreamBbo(context, r);
+        return bbo_->Stream(context, r);
       },
       request, &update));
 
@@ -356,7 +375,7 @@ TEST_F(GrpcIntegrationTest, VenueStatusReportsHealth) {
   grpc::ClientContext context;
   v1::GetVenueStatusRequest request;
   v1::GetVenueStatusResponse response;
-  ASSERT_TRUE(stub_->GetVenueStatus(&context, request, &response).ok());
+  ASSERT_TRUE(status_->GetVenueStatus(&context, request, &response).ok());
 
   ASSERT_EQ(response.venues_size(), 2);
   EXPECT_EQ(response.venues(0).venue(), "binance");
@@ -378,7 +397,7 @@ TEST_F(GrpcIntegrationTest, CrossedBookIsReportedNotClamped) {
   v1::BboUpdate update;
   ASSERT_TRUE(ReadOne(
       [&](grpc::ClientContext* context, const v1::StreamBboRequest& r) {
-        return stub_->StreamBbo(context, r);
+        return bbo_->Stream(context, r);
       },
       request, &update));
 

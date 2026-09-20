@@ -137,7 +137,7 @@ came within $11M of 50M. Regenerate with
 
 | Path | What |
 |---|---|
-| `proto/md/v1/market_data.proto` | The API. Start here. |
+| `proto/md/v1/` | The API, one file per service. Start here. |
 | `src/core/fixed.h` | Fixed-point arithmetic and the `__int128` rule |
 | `src/core/book.h` | One venue's book; sorted vectors, batch apply |
 | `src/core/consolidated.*` | Merged ladder, k-way merge, publish bounds |
@@ -150,6 +150,10 @@ came within $11M of 50M. Regenerate with
 | `src/net/` | WebSocket and HTTP clients, URL parsing, JSON |
 | `src/aggregator/` | Engine (owns the book), gRPC service, main |
 | `src/clients/` | The four client binaries |
+
+The proto is split by service — `bbo.proto`, `volume_bands.proto`,
+`price_bands.proto`, `status.proto`, with shared messages in `common.proto` — so
+everything about one stream reads in one place.
 
 **`VenueProtocol` has no sockets, no threads and no clock** — sequence
 validation, snapshot reconciliation and resync triggers are pure logic, tested

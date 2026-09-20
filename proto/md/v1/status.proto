@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package md.v1;
+
+// Per-venue connectivity, sequencing health and aggregation latency. Intended
+// for health checks and dashboards.
+service Status {
+  rpc GetVenueStatus(GetVenueStatusRequest) returns (GetVenueStatusResponse);
+}
+
+enum ConnState {
+  CONN_STATE_UNSPECIFIED = 0;
+  CONN_STATE_DISCONNECTED = 1;
+  CONN_STATE_CONNECTING = 2;
+  // Connected, but not yet provably in sync with the venue.
+  CONN_STATE_SYNCING = 3;
+  // In sync and contributing to the consolidated view.
+  CONN_STATE_LIVE = 4;
+  // Silent past the staleness timeout; excluded from the merge until it speaks.
+  CONN_STATE_STALE = 5;
+}
+
+message LatencyStats {
+  int64 p50_ns = 1;
+  int64 p99_ns = 2;
+  int64 max_ns = 3;
+  uint64 count = 4;
+}
+
+message VenueStatus {
+  string venue = 1;
+  // Venue-native symbol actually subscribed (e.g. "BTC-USDT" on OKX).
+  string venue_symbol = 2;
+  ConnState state = 3;
+  int64 last_recv_ts_ns = 4;
+  int64 last_exchange_ts_ns = 5;
+  uint64 messages = 6;
+  // Times the book was rebuilt from a fresh snapshot.
+  uint64 resyncs = 7;
+  // Sequence discontinuities. Each forces a resync; growing means a lossy feed.
+  uint64 sequence_gaps = 8;
+  // Inbound batches dropped because the ingest ring was full; also forces a resync.
+  uint64 ring_overflows = 9;
+  int32 bid_levels = 10;
+  int32 ask_levels = 11;
+  int64 best_bid_e8 = 12;
+  int64 best_ask_e8 = 13;
+}
+
+message GetVenueStatusRequest {
+  string instrument = 1;
+}
+
+message GetVenueStatusResponse {
+  repeated VenueStatus venues = 1;
+  uint64 published_snapshots = 2;
+  // Venue receive -> consolidated publish, measured inside the aggregator.
+  LatencyStats aggregation_latency = 3;
+  int64 server_ts_ns = 4;
+  int64 uptime_ns = 5;
+}

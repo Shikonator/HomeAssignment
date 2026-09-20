@@ -6,7 +6,10 @@ cc_library(
     name = "common",
     hdrs = ["common.h"],
     deps = [
-        "//proto/md/v1:market_data_cc_grpc",
+        "//proto/md/v1:bbo_cc_grpc",
+        "//proto/md/v1:price_bands_cc_grpc",
+        "//proto/md/v1:status_cc_grpc",
+        "//proto/md/v1:volume_bands_cc_grpc",
         "//src/common:flags",
         "//src/core",
         "@grpc//:grpc++",
