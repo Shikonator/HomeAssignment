@@ -48,14 +48,29 @@ All three venues reach `LIVE` in about 1.5 seconds.
 
 ## What you will see first
 
-**The 50M band often does not fill, and wide bps bands are depth-limited.** Both
-are correct. Read them per update rather than trusting this document.
+Two of the numbers the assignment asks for often cannot be answered, because
+the liquidity to answer them is not there. The system says so explicitly instead
+of returning a misleading figure, so **this is expected output, not a bug**:
 
-**The published ladder is bounded to 500 bps from the touch**
-(`--max-publish-bps`). Venue books are never truncated internally, so the diff
-stream accumulates levels far outside any snapshot for as long as the process
-runs. Publishing that unbounded would make every number depend on our uptime and
-let a 50M sweep "fill" by running 800-2500 bps out at several percent slippage.
+* **`fully_filled=false` on the 50M volume band.** That band asks "if I traded
+  50 million dollars right now, what average price would I get?" Usually there
+  is nowhere near 50M of resting liquidity, so the honest answer is "you could
+  not trade that much — here is what you could trade, and at what price".
+* **`depth_limited=true` on the wider bps bands.** Those ask "how much liquidity
+  sits within X% of the best price?" The exchanges only publish their books a
+  short distance out — roughly 1% — so for 2%, 5% and 10% the true answer is
+  "further than anything we can see".
+
+Which of these you see changes minute to minute, so read the flags on each
+message rather than assuming from this document.
+
+**Why the book is cut off at 500 bps.** Venue books are never truncated
+internally, so the diff stream keeps accumulating price levels far outside any
+snapshot for as long as the process runs. If we published all of that, every
+number would depend on how long our process had been up, and a 50M trade would
+"fill" only by sweeping 8-25% through the book at several percent slippage —
+not a price anyone would trade at. So the published book stops 500 bps (5%) from
+the best price (`--max-publish-bps`).
 
 Over 2,748 consecutive published states:
 
@@ -64,10 +79,12 @@ Over 2,748 consecutive published states:
 | bid | 0 of 2,748 (0.0%) | no wall in range |
 | ask | 934 of 2,748 (34.0%) | round-number sell walls — 85,000 in 652 of them |
 
-**This is why `fully_filled` is per band, per update, per side.** It is not a
-property of the configuration a consumer could hardcode from a README.
-1M/5M/10M/25M fill reliably; the trailing open-ended band always reports
-everything inside the bound.
+The two sides differ because filling 50M on the ask depends on a large
+round-number sell order happening to sit within range, which comes and goes.
+**That is why `fully_filled` is reported on every band of every message** rather
+than being something a client could look up once. The smaller bands
+(1M/5M/10M/25M) fill reliably, and the trailing open-ended band (`50M+`) always
+reports whatever liquidity does exist.
 
 The conclusion is robust to both obvious objections. Widening the window
 fivefold (106 -> 500 bps) adds only ~9% liquidity, and two snapshot captures a
