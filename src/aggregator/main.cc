@@ -10,7 +10,10 @@
 #include <thread>
 #include <cstdio>
 #include <memory>
+#include <algorithm>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "src/aggregator/engine.h"
@@ -110,8 +113,26 @@ int main(int argc, char** argv) {
                                                         rings.back().get(), options));
   };
 
-  const auto wants = [&](const std::string& name) {
-    return selected.find(name) != std::string::npos;
+  std::istringstream venue_list(selected);
+  // Exact names, not a substring search, and an unknown one is an error rather
+  // than a silent omission -- the same rule the gRPC venue filter applies, for
+  // the same reason: the operator would otherwise get a system built from
+  // configuration they did not ask for.
+  static constexpr std::string_view kKnownVenues[] = {"binance", "okx", "bybit"};
+  std::vector<std::string> requested;
+  for (std::string name; std::getline(venue_list, name, ',');) {
+    if (!name.empty()) requested.push_back(name);
+  }
+  for (const std::string& name : requested) {
+    if (std::find(std::begin(kKnownVenues), std::end(kKnownVenues), name) ==
+        std::end(kKnownVenues)) {
+      std::fprintf(stderr, "unknown venue '%s'; known venues are binance, okx, bybit\n",
+                   name.c_str());
+      return 2;
+    }
+  }
+  const auto wants = [&](std::string_view name) {
+    return std::find(requested.begin(), requested.end(), name) != requested.end();
   };
 
   if (wants("binance")) {

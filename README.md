@@ -263,8 +263,8 @@ hundreds; the callback API is the migration path.
 **Instruments.** One per process. The proto carries `instrument`, so scaling is
 horizontal.
 
-**Memory.** ~528 KB per snapshot (5500 levels × 48 B × 2 sides), ~13 MB/s at the
-measured rate. The price bound stops this growing with uptime.
+**Memory.** ~430 KB per snapshot (5500 levels × 40 B × 2 sides), ~11 MB/s at
+the measured rate. The price bound stops this growing with uptime.
 
 ## Testing
 

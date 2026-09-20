@@ -12,9 +12,11 @@
 
 namespace md {
 
-// 4 rather than 3 so one more fits; not larger because every slot costs 8
-// bytes on every published level. The aggregator refuses to start if exceeded.
-inline constexpr int kMaxVenues = 4;
+// Every slot costs 8 bytes on every published level, so this is sized to the
+// venues actually configured rather than to a guess about future ones. Adding
+// a venue is a one-constant recompile; the aggregator refuses to start if the
+// configuration exceeds it.
+inline constexpr int kMaxVenues = 3;
 
 using VenueMask = std::uint32_t;
 
