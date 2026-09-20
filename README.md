@@ -74,16 +74,6 @@ fivefold (106 -> 500 bps) adds only ~9% liquidity, and two snapshot captures a
 day apart — bid depth fell 30%, ask rose 17% — never came within $11M of 50M.
 Regenerate with `python3 test/conformance/reference/measure_depth.py`.
 
-## Assessment criteria
-
-| Criterion | Where |
-|---|---|
-| Correctness | [Testing](#testing); [Per-venue sequencing](#per-venue-sequencing) |
-| Architectural design | [Layout](#layout) — `VenueProtocol` has no sockets, threads or clock |
-| API/protocol design | `proto/md/v1/market_data.proto`; band sets live in the request |
-| System scalability | [Scalability](#scalability) |
-| Code quality and coverage | [Testing](#testing), including what is *not* covered |
-
 ## Layout
 
 | Path | What |
